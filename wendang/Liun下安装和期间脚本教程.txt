@@ -1,0 +1,7 @@
+liunx启动，将代码放在/home目录下：
+./install_dependencies.sh  --all
+#安装相关组件包
+start_linux.sh
+#一般start_linux启动会有问题，主要用来安装python所需要的插件
+restart_linux.sh  restart
+#可以启动项目服务和端口
