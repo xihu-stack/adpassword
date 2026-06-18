@@ -8,10 +8,37 @@ import secrets
 import logging
 
 
-def create_app():
+def create_app(testing=False):
     app = Flask(__name__)
-    app.config.from_object(Config)
-    
+
+    if testing:
+        app.config['TESTING'] = True
+        app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'testing-secret-key-do-not-use-in-prod')
+        app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('TEST_DATABASE_URL', 'sqlite:///:memory:')
+        app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+        app.config['WTF_CSRF_ENABLED'] = False
+        app.config['CORS_ORIGINS'] = []
+        app.config['PASSWORD_MIN_LENGTH'] = 8
+        app.config['PASSWORD_REQUIRE_UPPERCASE'] = True
+        app.config['PASSWORD_REQUIRE_LOWERCASE'] = True
+        app.config['PASSWORD_REQUIRE_NUMBER'] = True
+        app.config['PASSWORD_REQUIRE_SPECIAL'] = True
+        # Keys consumed by Config.init_app (called later in create_app)
+        app.config['SQLALCHEMY_ECHO'] = False
+        app.config['LOG_LEVEL'] = 'WARNING'
+        app.config['LOG_FILE'] = 'logs/test-app.log'
+        app.config['LOG_MAX_BYTES'] = 10485760
+        app.config['LOG_BACKUP_COUNT'] = 5
+        # SQLite in-memory needs StaticPool to share the connection
+        if 'sqlite' in app.config['SQLALCHEMY_DATABASE_URI']:
+            from sqlalchemy.pool import StaticPool
+            app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+                'connect_args': {'check_same_thread': False},
+                'poolclass': StaticPool,
+            }
+    else:
+        app.config.from_object(Config)
+
     # 自定义错误处理 - 不暴露敏感信息
     @app.errorhandler(404)
     def not_found(error):
