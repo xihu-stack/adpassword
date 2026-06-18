@@ -19,6 +19,13 @@ except ImportError:
 from models.models import User, Domain, db
 import bcrypt
 
+from services import secret_crypto as _sc
+
+
+def secret_decrypt(v):
+    """Decrypt a stored credential if encrypted, else return as-is (legacy plaintext)."""
+    return _sc.decrypt_value(v) if _sc.is_encrypted(v) else v
+
 
 class LdapService:
     # 连接模式：'real' = 真实 AD, 'mock' = 模拟模式
@@ -746,18 +753,18 @@ class LdapService:
                 )
             except Exception as e:
                 return False, f"管理员认证失败：{str(e)}"
-            
+
             # 修改密码 (LDAP 修改 unicodePwd 属性)
             try:
                 # AD 要求密码必须用双引号包裹并编码为 UTF-16LE
                 encoded_password = ('"' + new_password + '"').encode('utf-16-le')
-                
+
                 # 使用 MODIFY_REPLACE 操作
                 result = conn.modify(
                     user_dn,
                     {'unicodePwd': [(MODIFY_REPLACE, [encoded_password])]}
                 )
-                
+
                 if result:
                     conn.unbind()
                     return True, "密码修改成功"
@@ -765,9 +772,116 @@ class LdapService:
                     error_msg = conn.result.get('message', '密码修改失败')
                     conn.unbind()
                     return False, error_msg
-                        
+
             except Exception as e:
                 return False, f"修改密码失败：{str(e)}"
-            
+
         except Exception as e:
             return False, f"密码修改失败：{str(e)}"
+
+    @staticmethod
+    def lookup_user_by_email(domain, email):
+        """按 mail 查找用户，返回 dict 或 None。
+        返回字段：user_dn, mobile, mail, sam_account_name, member_of(list), disabled(bool)。
+        """
+        if not LDAP3_AVAILABLE:
+            return None
+        from services.ldap_filter import escape_ldap
+
+        servers = LdapService.get_ldap_servers({
+            'ldap_hosts': domain.ldap_hosts or domain.ldap_host,
+            'ldap_host': domain.ldap_host,
+            'ldap_port': domain.ldap_port,
+            'ldaps_port': domain.ldaps_port,
+            'use_ssl': domain.use_ssl,
+            'admin_dn': domain.admin_dn,
+            'admin_password': secret_decrypt(domain.admin_password),
+            'base_dn': domain.base_dn,
+        })
+        if not servers:
+            return None
+
+        protocol, host, port = servers[0]
+        server_url = f"{protocol}://{host}:{port}"
+        if protocol == 'ldaps':
+            tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
+                              ciphers='ALL:@SECLEVEL=0')
+            server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10)
+        else:
+            server = Server(server_url, get_info=ALL, connect_timeout=10)
+
+        try:
+            conn = Connection(server, user=domain.admin_dn,
+                              password=secret_decrypt(domain.admin_password),
+                              authentication=SIMPLE, auto_bind=True, receive_timeout=30)
+        except Exception as e:
+            print(f'[LDAP 查找] 绑定失败：{str(e)[:120]}')
+            return None
+
+        filt = f'(&(objectClass=user)(objectCategory=person)(mail={escape_ldap(email)}))'
+        try:
+            conn.search(search_base=domain.base_dn, search_filter=filt, search_scope=SUBTREE,
+                        attributes=['distinguishedName', 'mail', 'mobile',
+                                    'sAMAccountName', 'memberOf', 'userAccountControl'])
+            if not conn.entries:
+                return None
+            entry = conn.entries[0]
+            uac = 0
+            try:
+                uac = int(entry.userAccountControl.value) if entry.userAccountControl.value else 0
+            except Exception:
+                uac = 0
+            member_of = []
+            try:
+                raw = entry.memberOf.values if entry.memberOf.values else []
+                member_of = [str(x) for x in raw]
+            except Exception:
+                member_of = []
+            return {
+                'user_dn': entry.entry_dn,
+                'mail': str(entry.mail.value) if entry.mail.value else '',
+                'mobile': str(entry.mobile.value) if entry.mobile.value else '',
+                'sam_account_name': str(entry.sAMAccountName.value) if entry.sAMAccountName.value else '',
+                'member_of': member_of,
+                'disabled': bool(uac & 0x2),  # ACCOUNTDISABLE = bit 2
+            }
+        except Exception as e:
+            print(f'[LDAP 查找] 搜索失败：{str(e)[:120]}')
+            return None
+        finally:
+            try:
+                conn.unbind()
+            except Exception:
+                pass
+
+    @staticmethod
+    def admin_set_password_by_dn(domain, user_dn, new_password):
+        """用管理员绑定，对指定 DN 重置密码（不需要原密码）。返回 (ok, message)。"""
+        if not LDAP3_AVAILABLE:
+            return False, 'ldap3 库不可用'
+        if LdapService.CONNECTION_MODE == 'mock':
+            return True, '密码修改成功 (模拟)'
+        try:
+            protocol = 'ldaps' if domain.use_ssl else 'ldap'
+            port = domain.ldaps_port if domain.use_ssl else domain.ldap_port
+            server_url = f"{protocol}://{(domain.ldap_hosts or domain.ldap_host).split(',')[0].strip()}:{port}"
+            if protocol == 'ldaps':
+                tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
+                                  ciphers='ALL:@SECLEVEL=0')
+                server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10,
+                                allowed_referral_hosts=[('*', True)])
+            else:
+                server = Server(server_url, get_info=ALL)
+            conn = Connection(server, user=domain.admin_dn,
+                              password=secret_decrypt(domain.admin_password),
+                              authentication=SIMPLE, auto_bind=True)
+            encoded = ('"' + new_password + '"').encode('utf-16-le')
+            result = conn.modify(user_dn, {'unicodePwd': [(MODIFY_REPLACE, [encoded])]})
+            if result:
+                conn.unbind()
+                return True, '密码修改成功'
+            msg = conn.result.get('message', '密码修改失败')
+            conn.unbind()
+            return False, msg
+        except Exception as e:
+            return False, f'密码修改失败：{str(e)}'
