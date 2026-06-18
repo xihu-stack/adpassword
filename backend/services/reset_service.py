@@ -83,3 +83,30 @@ class ResetService:
                 rl.window_start = now
             rl.sent_count += 1
         db.session.commit()
+
+
+def normalize_email(email):
+    return (email or '').strip().lower()
+
+
+def normalize_phone(phone):
+    digits = re.sub(r'\D', '', phone or '')
+    if len(digits) == 13 and digits.startswith('86'):
+        digits = digits[2:]
+    return digits
+
+
+def validate_password(pw, config):
+    if not pw:
+        return False, '请输入新密码'
+    if len(pw) < int(config.get('PASSWORD_MIN_LENGTH', 8)):
+        return False, '新密码长度至少 %d 位' % config.get('PASSWORD_MIN_LENGTH', 8)
+    if config.get('PASSWORD_REQUIRE_LOWERCASE') and not re.search(r'[a-z]', pw):
+        return False, '密码必须包含小写字母'
+    if config.get('PASSWORD_REQUIRE_UPPERCASE') and not re.search(r'[A-Z]', pw):
+        return False, '密码必须包含大写字母'
+    if config.get('PASSWORD_REQUIRE_NUMBER') and not re.search(r'\d', pw):
+        return False, '密码必须包含数字'
+    if config.get('PASSWORD_REQUIRE_SPECIAL') and not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]", pw):
+        return False, '密码必须包含特殊字符'
+    return True, None
