@@ -123,16 +123,16 @@ class AdminLog(db.Model):
 
 class SmsVerificationCode(db.Model):
     __tablename__ = 'sms_verification_codes'
-    
+
     id = db.Column(db.Integer, primary_key=True)
     phone = db.Column(db.String(20), nullable=False, index=True)
-    code = db.Column(db.String(10), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    code = db.Column(db.String(255), nullable=False)  # bcrypt 哈希
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     is_used = db.Column(db.Boolean, default=False)
     expires_at = db.Column(db.DateTime, nullable=False)
+    fail_count = db.Column(db.Integer, default=0)
+    purpose = db.Column(db.String(30), default='reset')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    user = db.relationship('User', backref=db.backref('verification_codes', lazy='dynamic'))
 
 
 class SystemSetting(db.Model):
@@ -154,3 +154,17 @@ class SystemSetting(db.Model):
             'description': self.description,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class SmsRateLimit(db.Model):
+    __tablename__ = 'sms_rate_limits'
+
+    id = db.Column(db.Integer, primary_key=True)
+    key_type = db.Column(db.String(20), nullable=False)   # phone|email|ip
+    key_value = db.Column(db.String(200), nullable=False)
+    sent_count = db.Column(db.Integer, default=0)
+    window_start = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('key_type', 'key_value', name='uq_sms_rate_key'),
+    )
