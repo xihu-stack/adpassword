@@ -53,3 +53,59 @@ def test_validate_password_policy(app):
         assert validate_password('NOLOWERCASE1!', app.config)[0] is False       # 无小写
         assert validate_password('Abcdefg!', app.config)[0] is False            # 无数字
         assert validate_password('Abcdefg1', app.config)[0] is False            # 无特殊字符
+
+
+def _seed_user(fake_ldap, email, mobile, sam='u1', disabled=False, member_of=None):
+    fake_ldap.users[email.lower()] = {
+        'user_dn': 'CN=%s,DC=test,DC=com' % sam,
+        'mail': email, 'mobile': mobile, 'sam_account_name': sam,
+        'member_of': member_of or [], 'disabled': disabled,
+    }
+
+
+def test_find_match(app, fake_ldap, fake_sms):
+    _seed_user(fake_ldap, 'John@X.com', '13800000000')
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        matched, info = svc.find_user_by_email_phone(' john@x.com ', '138-0000-0000')
+        assert matched is True
+        assert info['user_dn'].startswith('CN=u1')
+        assert info['mobile'] == '13800000000'
+
+
+def test_find_phone_mismatch(app, fake_ldap, fake_sms):
+    _seed_user(fake_ldap, 'a@x.com', '13800000000')
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        matched, info = svc.find_user_by_email_phone('a@x.com', '13900000000')
+        assert matched is False
+        assert info is None
+
+
+def test_find_disabled_rejected(app, fake_ldap, fake_sms):
+    _seed_user(fake_ldap, 'a@x.com', '13800000000', disabled=True)
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        matched, info = svc.find_user_by_email_phone('a@x.com', '13800000000')
+        assert matched is False
+
+
+def test_find_protected_rejected(app, fake_ldap, fake_sms):
+    _seed_user(fake_ldap, 'a@x.com', '13800000000', sam='admin')
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        matched, info = svc.find_user_by_email_phone('a@x.com', '13800000000')
+        assert matched is False
+
+
+def test_find_protected_by_group(app, fake_ldap, fake_sms):
+    _seed_user(fake_ldap, 'a@x.com', '13800000000',
+               member_of=['CN=Domain Admins,CN=Groups,DC=test,DC=com'])
+    with app.app_context():
+        from models.models import SystemSetting, db
+        st = SystemSetting.query.filter_by(setting_key='reset_protected_accounts').first()
+        st.setting_value = '["CN=Domain Admins,CN=Groups,DC=test,DC=com"]'
+        db.session.commit()
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        matched, info = svc.find_user_by_email_phone('a@x.com', '13800000000')
+        assert matched is False

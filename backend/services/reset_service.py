@@ -84,6 +84,48 @@ class ResetService:
             rl.sent_count += 1
         db.session.commit()
 
+    # ---------- 身份匹配 ----------
+    def _protected_list(self):
+        import json
+        st = SystemSetting.query.filter_by(setting_key='reset_protected_accounts').first()
+        if not st or not st.setting_value:
+            return []
+        try:
+            return [str(x).strip().lower() for x in json.loads(st.setting_value) if x]
+        except Exception:
+            return []
+
+    def find_user_by_email_phone(self, email, phone):
+        """返回 (matched: bool, info|None)。"""
+        email = normalize_email(email)
+        phone = normalize_phone(phone)
+        if not email or not phone:
+            return False, None
+
+        domain = Domain.query.filter_by(is_active=True).first()
+        if not domain:
+            return False, None
+
+        info = self.ldap.lookup_user_by_email(domain, email)
+        if not info:
+            return False, None
+        if info.get('disabled'):
+            return False, None
+        if normalize_phone(info.get('mobile', '')) != phone:
+            return False, None
+
+        # 保护名单：DN / sAMAccountName / memberOf 任一命中
+        protected = self._protected_list()
+        candidates = {
+            (info.get('user_dn') or '').lower(),
+            (info.get('sam_account_name') or '').lower(),
+        }
+        candidates.update(m.lower() for m in info.get('member_of', []))
+        if any(p in candidates for p in protected):
+            return False, None
+
+        return True, info
+
 
 def normalize_email(email):
     return (email or '').strip().lower()
