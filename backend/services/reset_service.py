@@ -4,6 +4,8 @@ import bcrypt
 import secrets
 import re
 
+from flask import current_app
+
 from models.models import db, SmsVerificationCode, SmsRateLimit, SystemSetting, Domain
 from services import secret_crypto
 
@@ -169,6 +171,20 @@ class ResetService:
             return False, '验证码错误，还剩 %d 次' % remaining
         rec.is_used = True
         db.session.commit()
+        return True, 'OK'
+
+    # ---------- 重置 ----------
+    def perform_reset(self, user_dn, new_password, config=None):
+        cfg = config or current_app.config
+        ok, msg = validate_password(new_password, cfg)
+        if not ok:
+            return False, msg
+        domain = Domain.query.filter_by(is_active=True).first()
+        if not domain:
+            return False, '服务暂不可用，请联系管理员'
+        ok, msg = self.ldap.admin_set_password_by_dn(domain, user_dn, new_password)
+        if not ok:
+            return False, '重置失败，请联系管理员'
         return True, 'OK'
 
 

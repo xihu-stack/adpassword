@@ -151,3 +151,28 @@ def test_issue_cooldown_blocks(app, fake_ldap, fake_sms):
         assert svc.issue_sms_code('CN=u1,DC=test,DC=com', '13800000000')[0] is True
         ok, _ = svc.issue_sms_code('CN=u1,DC=test,DC=com', '13800000000')
         assert ok is False  # 60s 冷却
+
+
+def test_perform_reset_ok(app, fake_ldap, fake_sms):
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        ok, msg = svc.perform_reset('CN=u1,DC=test,DC=com', 'Ab@12345')
+        assert ok, msg
+        assert fake_ldap.set_password_calls[-1] == ('CN=u1,DC=test,DC=com', 'Ab@12345')
+
+
+def test_perform_reset_weak_password(app, fake_ldap, fake_sms):
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        ok, msg = svc.perform_reset('CN=u1,DC=test,DC=com', 'weak')
+        assert ok is False
+        assert fake_ldap.set_password_calls == []
+
+
+def test_perform_reset_ad_failure(app, fake_ldap, fake_sms):
+    with app.app_context():
+        fake_ldap.set_password_ok = False
+        fake_ldap.set_password_msg = '密码不符合域策略'
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        ok, msg = svc.perform_reset('CN=u1,DC=test,DC=com', 'Ab@12345')
+        assert ok is False
