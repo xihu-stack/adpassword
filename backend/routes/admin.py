@@ -161,10 +161,6 @@ def dashboard():
                     <div class="menu-icon">🌐</div>
                     <div class="menu-title">域配置管理</div>
                 </a>
-                <a href="/admin/users" class="menu-item">
-                    <div class="menu-icon">👥</div>
-                    <div class="menu-title">用户管理</div>
-                </a>
                 <a href="/admin/sms" class="menu-item">
                     <div class="menu-icon">💬</div>
                     <div class="menu-title">短信配置</div>
@@ -172,10 +168,6 @@ def dashboard():
                 <a href="/admin/logs" class="menu-item">
                     <div class="menu-icon">📊</div>
                     <div class="menu-title">操作日志</div>
-                </a>
-                <a href="/admin/settings" class="menu-item">
-                    <div class="menu-icon">⚙️</div>
-                    <div class="menu-title">系统设置</div>
                 </a>
                 <a href="/" class="menu-item">
                     <div class="menu-icon">🏠</div>
@@ -2360,6 +2352,8 @@ def get_protected_accounts():
             items = json.loads(st.setting_value)
         except Exception:
             items = []
+    if not items:
+        items = ['admin']
     return jsonify({'success': True, 'data': items})
 
 
