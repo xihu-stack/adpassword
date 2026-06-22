@@ -26,7 +26,7 @@ def admin_required(f):
         if session.get('user_role') != 'admin':
             if request.is_json:
                 return jsonify({'success': False, 'message': '权限不足'}), 403
-            return redirect(url_for('user.index'))
+            return redirect(url_for('reset.reset_page'))
         
         return f(*args, **kwargs)
     return decorated_function
