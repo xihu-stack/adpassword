@@ -1,5 +1,6 @@
 from flask import Flask, redirect, url_for, session, request, jsonify, make_response
 from flask_cors import CORS
+from flask_wtf import CSRFProtect
 from config import Config
 from models.models import db, User
 import os
@@ -153,6 +154,9 @@ def create_app(testing=False):
             'service': 'AD Password Management System'
         }), 200
     
+    # 启用 CSRF 保护（在测试模式下通过 WTF_CSRF_ENABLED=False 关闭）
+    csrf = CSRFProtect(app)
+
     # 初始化数据库
     db.init_app(app)
     
