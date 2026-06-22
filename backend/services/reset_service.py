@@ -18,19 +18,39 @@ CODE_TTL_MINUTES = 5
 MAX_FAIL_COUNT = 5
 RESET_SESSION_MINUTES = 10
 
+# 仅 DEMO_MODE 使用：缓存最近一次"发送"的验证码，供演示页面回显（生产不触发）
+_DEMO_CODES = {}
+
 
 class _DefaultLdapAdapter:
     def lookup_user_by_email(self, domain, email):
+        if current_app.config.get('DEMO_MODE'):
+            # 演示模式：返回一个固定手机号 13800000000 的假用户（不连真实 AD）
+            return {
+                'user_dn': 'CN=DemoUser,DC=demo,DC=com',
+                'mail': (email or '').strip().lower(),
+                'mobile': '13800000000',
+                'sam_account_name': 'demouser',
+                'member_of': [],
+                'disabled': False,
+            }
         from services.ldap_service import LdapService
         return LdapService.lookup_user_by_email(domain, email)
 
     def admin_set_password_by_dn(self, domain, user_dn, new_password):
+        if current_app.config.get('DEMO_MODE'):
+            return True, 'OK (demo)'
         from services.ldap_service import LdapService
         return LdapService.admin_set_password_by_dn(domain, user_dn, new_password)
 
 
 class _DefaultSmsAdapter:
     def send_verification_code(self, phone, code):
+        if current_app.config.get('DEMO_MODE'):
+            # 演示模式：不调用阿里云，把验证码打到服务端控制台并缓存供页面回显
+            _DEMO_CODES[phone] = code
+            print('\n>>> [DEMO] 验证码已"发送"至 %s：%s <<<\n' % (phone, code))
+            return True, 'OK (demo)'
         from services.sms_service import SmsService
         from models.models import SmsConfig
         cfg = SmsConfig.query.filter_by(is_active=True).first()

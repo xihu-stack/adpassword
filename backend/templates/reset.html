@@ -96,7 +96,9 @@
     if(!email||!phone){ show('msg1','请输入邮箱和手机号','err'); return; }
     show('msg1','正在验证...','ok');
     const d=await post('/reset/verify-identity',{email,phone});
-    show('msg1',d.message, d.success?'ok':'err');
+    let extra = '';
+    if (d.demo_code) { extra = '（演示模式，本次验证码：' + d.demo_code + '）'; }
+    show('msg1', d.message + extra, d.success?'ok':'err');
     if(d.success){ go(3); }
   }
   async function resendCode(btn){ btn.disabled=true; const d=await post('/reset/send-code',{}); show('msg3',d.message,d.success?'ok':'err'); setTimeout(()=>btn.disabled=false,3000); }

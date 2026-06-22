@@ -24,6 +24,7 @@ def create_app(testing=False):
         app.config['PASSWORD_REQUIRE_LOWERCASE'] = True
         app.config['PASSWORD_REQUIRE_NUMBER'] = True
         app.config['PASSWORD_REQUIRE_SPECIAL'] = True
+        app.config['DEMO_MODE'] = False
         # Keys consumed by Config.init_app (called later in create_app)
         app.config['SQLALCHEMY_ECHO'] = False
         app.config['LOG_LEVEL'] = 'WARNING'
@@ -173,7 +174,20 @@ def create_app(testing=False):
             db.session.add(admin)
             db.session.commit()
             app.logger.info('✓ 已创建默认管理员账号：admin')
-        
+
+        # 演示模式：自动种入一个激活域，使公开重置流程可体验（不连真实 AD）
+        if app.config.get('DEMO_MODE') and not testing:
+            from models.models import Domain
+            if Domain.query.filter_by(is_active=True).count() == 0:
+                demo_domain = Domain(
+                    name='演示域 (DEMO)', ldap_hosts='demo-dc', ldap_port=389,
+                    ldaps_port=636, base_dn='DC=demo,DC=com',
+                    admin_dn='CN=Admin,DC=demo,DC=com', admin_password='demo',
+                    use_ssl=False, is_active=True)
+                db.session.add(demo_domain)
+                db.session.commit()
+                app.logger.info('✓ [DEMO_MODE] 已种入演示域配置')
+
         # 初始化配置
         Config.init_app(app)
     

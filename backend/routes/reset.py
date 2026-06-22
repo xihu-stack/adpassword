@@ -20,8 +20,11 @@ def _clear_reset():
         session.pop(k, None)
 
 
-def _ok(message, step=None):
-    return jsonify({'success': True, 'message': message, 'step': step})
+def _ok(message, step=None, demo_code=None):
+    payload = {'success': True, 'message': message, 'step': step}
+    if demo_code is not None:
+        payload['demo_code'] = demo_code
+    return jsonify(payload)
 
 
 def _fail(message, step=1):
@@ -55,6 +58,12 @@ def verify_identity():
         if not ok:
             # 发码失败：保留 session 以便重发，返回统一文案
             return _ok('若信息匹配，验证码已发送至您预留的手机', 3)
+        # DEMO_MODE：把验证码回显到响应，方便演示（生产模式下不存在该字段）
+        demo_code = None
+        if current_app.config.get('DEMO_MODE'):
+            from services.reset_service import _DEMO_CODES
+            demo_code = _DEMO_CODES.get(session.get('reset_phone'))
+        return _ok('若信息匹配，验证码已发送至您预留的手机', 3, demo_code=demo_code)
     return _ok('若信息匹配，验证码已发送至您预留的手机', 3)
 
 

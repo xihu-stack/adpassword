@@ -48,6 +48,10 @@ class Config:
     PASSWORD_REQUIRE_LOWERCASE = os.getenv('PASSWORD_REQUIRE_LOWERCASE', 'true').lower() == 'true'
     PASSWORD_REQUIRE_NUMBER = os.getenv('PASSWORD_REQUIRE_NUMBER', 'true').lower() == 'true'
     PASSWORD_REQUIRE_SPECIAL = os.getenv('PASSWORD_REQUIRE_SPECIAL', 'true').lower() == 'true'
+
+    # 演示模式：开启后不连接真实 AD/阿里云短信，用假用户 + 控制台回显验证码，便于一键体验。
+    # 生产环境必须保持 false。
+    DEMO_MODE = os.getenv('DEMO_MODE', 'false').lower() == 'true'
     
     # 安全增强配置
     WTF_CSRF_ENABLED = True
