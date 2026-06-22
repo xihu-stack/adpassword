@@ -127,11 +127,13 @@ def create_app(testing=False):
     from routes.admin import admin_bp
     from routes.user import user_bp
     from routes.mock_cas import mock_cas_bp
-    
+    from routes.reset import reset_bp
+
     app.register_blueprint(ldap_auth_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(user_bp, url_prefix='/user')
     app.register_blueprint(mock_cas_bp, url_prefix='/mock-cas')
+    app.register_blueprint(reset_bp)
     
     # 根路由 - 重定向到登录页
     @app.route('/')
