@@ -55,3 +55,20 @@ def test_full_flow(client, monkeypatch, fake_ldap, fake_sms):
     # 一次性：再次重置被拒
     r = client.post('/reset/do-reset', json={'new_password': 'Ab@12345', 'confirm_password': 'Ab@12345'})
     assert r.get_json()['success'] is False
+
+
+def test_mismatch_still_queries_ldap(client, monkeypatch, fake_ldap, fake_sms):
+    # Even on a non-matching identity, the LDAP lookup must still happen
+    # (timing equalization) and NO sms is sent.
+    monkeypatch.setattr('routes.reset.ResetService',
+        lambda *a, **k: ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms))
+    calls = {'n': 0}
+    orig = fake_ldap.lookup_user_by_email
+    def counting(domain, email):
+        calls['n'] += 1
+        return orig(domain, email)
+    fake_ldap.lookup_user_by_email = counting
+    r = client.post('/reset/verify-identity', json={'email': 'nope@x.com', 'phone': '13800000000'})
+    assert r.get_json()['success'] is True   # unified message (anti-enumeration)
+    assert calls['n'] == 1                    # LDAP query happened on mismatch
+    assert len(fake_sms.sent) == 0            # no SMS sent on mismatch
