@@ -801,58 +801,56 @@ class LdapService:
         if not servers:
             return None
 
-        protocol, host, port = servers[0]
-        server_url = f"{protocol}://{host}:{port}"
-        if protocol == 'ldaps':
-            tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
-                              ciphers='ALL:@SECLEVEL=0')
-            server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10)
-        else:
-            server = Server(server_url, get_info=ALL, connect_timeout=10)
-
-        try:
-            conn = Connection(server, user=domain.admin_dn,
-                              password=secret_decrypt(domain.admin_password),
-                              authentication=SIMPLE, auto_bind=True, receive_timeout=30)
-        except Exception as e:
-            print(f'[LDAP 查找] 绑定失败：{str(e)[:120]}')
-            return None
-
         filt = f'(&(objectClass=user)(objectCategory=person)(mail={escape_ldap(email)}))'
-        try:
-            conn.search(search_base=domain.base_dn, search_filter=filt, search_scope=SUBTREE,
-                        attributes=['distinguishedName', 'mail', 'mobile',
-                                    'sAMAccountName', 'memberOf', 'userAccountControl'])
-            if not conn.entries:
-                return None
-            entry = conn.entries[0]
-            uac = 0
+        attrs = ['distinguishedName', 'mail', 'mobile', 'sAMAccountName', 'memberOf', 'userAccountControl']
+        for protocol, host, port in servers:
+            server_url = f"{protocol}://{host}:{port}"
+            if protocol == 'ldaps':
+                tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
+                                  ciphers='ALL:@SECLEVEL=0')
+                server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10)
+            else:
+                server = Server(server_url, get_info=ALL, connect_timeout=10)
+            conn = None
             try:
-                uac = int(entry.userAccountControl.value) if entry.userAccountControl.value else 0
-            except Exception:
+                conn = Connection(server, user=domain.admin_dn,
+                                  password=secret_decrypt(domain.admin_password),
+                                  authentication=SIMPLE, auto_bind=True, receive_timeout=30)
+                conn.search(search_base=domain.base_dn, search_filter=filt, search_scope=SUBTREE,
+                            attributes=attrs)
+                # Bound + searched OK on this server: a real "no such user" → stop.
+                if not conn.entries:
+                    return None
+                entry = conn.entries[0]
                 uac = 0
-            member_of = []
-            try:
-                raw = entry.memberOf.values if entry.memberOf.values else []
-                member_of = [str(x) for x in raw]
-            except Exception:
+                try:
+                    uac = int(entry.userAccountControl.value) if entry.userAccountControl.value else 0
+                except Exception:
+                    uac = 0
                 member_of = []
-            return {
-                'user_dn': entry.entry_dn,
-                'mail': str(entry.mail.value) if entry.mail.value else '',
-                'mobile': str(entry.mobile.value) if entry.mobile.value else '',
-                'sam_account_name': str(entry.sAMAccountName.value) if entry.sAMAccountName.value else '',
-                'member_of': member_of,
-                'disabled': bool(uac & 0x2),  # ACCOUNTDISABLE = bit 2
-            }
-        except Exception as e:
-            print(f'[LDAP 查找] 搜索失败：{str(e)[:120]}')
-            return None
-        finally:
-            try:
-                conn.unbind()
-            except Exception:
-                pass
+                try:
+                    raw = entry.memberOf.values if entry.memberOf.values else []
+                    member_of = [str(x) for x in raw]
+                except Exception:
+                    member_of = []
+                return {
+                    'user_dn': entry.entry_dn,
+                    'mail': str(entry.mail.value) if entry.mail.value else '',
+                    'mobile': str(entry.mobile.value) if entry.mobile.value else '',
+                    'sam_account_name': str(entry.sAMAccountName.value) if entry.sAMAccountName.value else '',
+                    'member_of': member_of,
+                    'disabled': bool(uac & 0x2),  # ACCOUNTDISABLE (value 2)
+                }
+            except Exception as e:
+                print(f'[LDAP 查找] 服务器 {host}:{port} 失败，尝试下一台：{str(e)[:120]}')
+                continue
+            finally:
+                if conn:
+                    try:
+                        conn.unbind()
+                    except Exception:
+                        pass
+        return None
 
     @staticmethod
     def admin_set_password_by_dn(domain, user_dn, new_password):
@@ -862,26 +860,51 @@ class LdapService:
         if LdapService.CONNECTION_MODE == 'mock':
             return True, '密码修改成功 (模拟)'
         try:
-            protocol = 'ldaps' if domain.use_ssl else 'ldap'
-            port = domain.ldaps_port if domain.use_ssl else domain.ldap_port
-            server_url = f"{protocol}://{(domain.ldap_hosts or domain.ldap_host).split(',')[0].strip()}:{port}"
-            if protocol == 'ldaps':
-                tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
-                                  ciphers='ALL:@SECLEVEL=0')
-                server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10,
-                                allowed_referral_hosts=[('*', True)])
-            else:
-                server = Server(server_url, get_info=ALL)
-            conn = Connection(server, user=domain.admin_dn,
-                              password=secret_decrypt(domain.admin_password),
-                              authentication=SIMPLE, auto_bind=True)
+            servers = LdapService.get_ldap_servers({
+                'ldap_hosts': domain.ldap_hosts or domain.ldap_host,
+                'ldap_host': domain.ldap_host,
+                'ldap_port': domain.ldap_port,
+                'ldaps_port': domain.ldaps_port,
+                'use_ssl': domain.use_ssl,
+                'admin_dn': domain.admin_dn,
+                'admin_password': secret_decrypt(domain.admin_password),
+                'base_dn': domain.base_dn,
+            })
+            if not servers:
+                return False, '未配置 LDAP 服务器'
             encoded = ('"' + new_password + '"').encode('utf-16-le')
-            result = conn.modify(user_dn, {'unicodePwd': [(MODIFY_REPLACE, [encoded])]})
-            if result:
-                conn.unbind()
-                return True, '密码修改成功'
-            msg = conn.result.get('message', '密码修改失败')
-            conn.unbind()
-            return False, msg
+            last_err = '密码修改失败'
+            for protocol, host, port in servers:
+                server_url = f"{protocol}://{host}:{port}"
+                if protocol == 'ldaps':
+                    tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
+                                      ciphers='ALL:@SECLEVEL=0')
+                    server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10,
+                                    allowed_referral_hosts=[('*', True)])
+                else:
+                    server = Server(server_url, get_info=ALL)
+                conn = None
+                try:
+                    conn = Connection(server, user=domain.admin_dn,
+                                      password=secret_decrypt(domain.admin_password),
+                                      authentication=SIMPLE, auto_bind=True)
+                    result = conn.modify(user_dn, {'unicodePwd': [(MODIFY_REPLACE, [encoded])]})
+                    if result:
+                        conn.unbind()
+                        return True, '密码修改成功'
+                    # Modify rejected (policy/auth) — do not retry other servers.
+                    last_err = conn.result.get('message', '密码修改失败')
+                    conn.unbind()
+                    return False, last_err
+                except Exception as e:
+                    last_err = f'密码修改失败：{str(e)}'
+                    continue
+                finally:
+                    if conn:
+                        try:
+                            conn.unbind()
+                        except Exception:
+                            pass
+            return False, last_err
         except Exception as e:
             return False, f'密码修改失败：{str(e)}'
