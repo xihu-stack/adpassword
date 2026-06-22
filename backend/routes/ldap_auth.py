@@ -19,7 +19,7 @@ def login_test():
 def login():
     """LDAP 登录页面"""
     if 'user_id' in session:
-        return redirect(url_for('admin.dashboard' if session.get('user_role') == 'admin' else 'user.index'))
+        return redirect(url_for('admin.dashboard' if session.get('user_role') == 'admin' else 'reset.reset_page'))
     
     # 模拟默认域配置
     domain_hint = '默认域'
@@ -225,8 +225,7 @@ def authenticate():
                     session['user_id'] = admin_user.id
                     session['username'] = 'admin'
                     session['user_role'] = 'admin'
-                    session['mfa_enabled'] = admin_user.mfa_enabled if hasattr(admin_user, 'mfa_enabled') else False
-                    
+
                     # 记录登录日志
                     from utils.logger import log_operation
                     log_operation(
@@ -245,193 +244,9 @@ def authenticate():
         else:
             # admin 账户不存在
             return redirect(url_for('ldap_auth.login', error='管理员账户不存在', username=username))
-    
-    # 其他用户使用 LDAP 认证
-    # 获取域配置
-    domain = Domain.query.filter_by(is_active=True).first()
-    if not domain:
-        return redirect(url_for('ldap_auth.login', error='未配置域信息', username=username))
-    
-    try:
-        # 尝试使用 LDAP 服务进行认证
-        from ldap3 import Server, Connection, ALL, SIMPLE, SUBTREE
-        from services.ldap_service import LdapService
-        
-        # 判断是否使用 SSL
-        use_ssl = domain.use_ssl or (domain.ldap_port == 636)
-        protocol = 'ldaps' if use_ssl else 'ldap'
-        port = domain.ldaps_port if use_ssl else domain.ldap_port
-        
-        server_url = f"{protocol}://{domain.ldap_host}:{port}"
-        print(f'[LDAP 认证] 连接服务器：{server_url}')
-        
-        # 创建服务器对象
-        if use_ssl:
-            from ldap3 import Tls
-            import ssl
-            tls_context = Tls(
-                validate=ssl.CERT_NONE,
-                version=ssl.PROTOCOL_TLS_CLIENT,
-                ciphers='ALL:@SECLEVEL=0'
-            )
-            server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10)
-        else:
-            server = Server(server_url, get_info=ALL, connect_timeout=10)
-        
-        # 尝试 1: 直接使用输入的 username 作为 UPN 进行认证
-        # 用户可能输入的是 UPN (如 zhangsan@domain.com) 或纯用户名 (如 zhangsan)
-        upn_to_try = username
-        
-        # 如果用户名不包含 @，自动添加域名构成 UPN
-        if '@' not in username:
-            # 从 base_dn 提取域名
-            dc_parts = [part.replace('DC=', '').strip() for part in domain.base_dn.split(',') if 'DC=' in part]
-            if dc_parts:
-                domain_name = '.'.join(dc_parts)
-                upn_to_try = f"{username}@{domain_name}"
-                print(f'[LDAP 认证] 自动构造 UPN: {upn_to_try}')
-        
-        # 使用 UPN 进行 LDAP 绑定
-        conn = None
-        try:
-            conn = Connection(
-                server,
-                user=upn_to_try,
-                password=password,
-                authentication=SIMPLE,
-                auto_bind=True,
-                receive_timeout=30
-            )
-            print(f'[LDAP 认证] ✅ 认证成功，UPN: {upn_to_try}')
-        except Exception as bind_error:
-            print(f'[LDAP 认证] ❌ UPN 认证失败：{str(bind_error)[:200]}')
-            # 如果 UPN 认证失败，尝试使用 DN 认证
-            # 先搜索用户的 DN
-            search_filter = f'(|(userPrincipalName={username})(sAMAccountName={username}))'
-            result = conn.search(
-                search_base=domain.base_dn,
-                search_filter=search_filter,
-                search_scope=SUBTREE,
-                attributes=['distinguishedName', 'userPrincipalName', 'mail', 'displayName', 'telephoneNumber', 'mobile']
-            ) if conn else False
-            
-            if result and len(conn.entries) > 0:
-                entry = conn.entries[0]
-                user_dn = str(entry.distinguishedName.value)
-                print(f'[LDAP 认证] 找到用户 DN: {user_dn}')
-                
-                # 使用 DN 重新认证
-                try:
-                    conn = Connection(
-                        server,
-                        user=user_dn,
-                        password=password,
-                        authentication=SIMPLE,
-                        auto_bind=True,
-                        receive_timeout=30
-                    )
-                    print(f'[LDAP 认证] ✅ DN 认证成功')
-                except Exception as dn_error:
-                    print(f'[LDAP 认证] ❌ DN 认证也失败：{str(dn_error)[:200]}')
-                    raise Exception('LDAP 认证失败')
-            else:
-                raise Exception('LDAP 认证失败')
-        
-        # 认证成功后，获取用户信息
-        # 使用绑定的连接搜索用户详细信息
-        search_filter = f'(|(userPrincipalName={upn_to_try})(sAMAccountName={username.split("@")[0] if "@" in upn_to_try else username}))'
-        result = conn.search(
-            search_base=domain.base_dn,
-            search_filter=search_filter,
-            search_scope=SUBTREE,
-            attributes=['distinguishedName', 'userPrincipalName', 'mail', 'displayName', 'telephoneNumber', 'mobile', 'sAMAccountName']
-        )
-        
-        if result and len(conn.entries) > 0:
-            entry = conn.entries[0]
-            user_info = {
-                'dn': str(entry.distinguishedName.value),
-                'email': str(entry.mail.value) if hasattr(entry, 'mail') and entry.mail.value else '',
-                'display_name': str(entry.displayName.value) if hasattr(entry, 'displayName') and entry.displayName.value else username,
-                'phone': str(entry.telephoneNumber.value) if hasattr(entry, 'telephoneNumber') and entry.telephoneNumber.value else '',
-                'mobile': str(entry.mobile.value) if hasattr(entry, 'mobile') and entry.mobile.value else '',
-                'upn': str(entry.userPrincipalName.value) if hasattr(entry, 'userPrincipalName') and entry.userPrincipalName.value else upn_to_try,
-            }
-            print(f'[LDAP 认证] 获取到用户信息：{user_info}')
-        else:
-            # 如果搜索失败，使用基本信息
-            user_info = {
-                'dn': '',
-                'email': '',
-                'display_name': username,
-                'phone': '',
-                'mobile': '',
-                'upn': upn_to_try
-            }
-        
-        success = True
-        message = '认证成功'
-        
-    except Exception as e:
-        print(f'[LDAP 认证] 认证异常：{str(e)}')
-        success = False
-        message = str(e)
-        user_info = None
-    
-    if not success:
-        return redirect(url_for('ldap_auth.login', error=f'认证失败：{message}', username=username))
-    
-    # 查询或创建本地用户
-    # 优先使用 UPN 查询，如果没有 UPN 则使用 username
-    user = User.query.filter_by(username=user_info.get('upn', username)).first()
-    if not user:
-        user = User.query.filter_by(username=username).first()
-    
-    if not user:
-        # 如果是 AD 同步过来的用户，应该在 sync 时已经创建
-        # 这里是首次登录的 AD 用户，自动创建本地账号
-        try:
-            # 使用 UPN 作为用户名，如果没有 UPN 则使用原始 username
-            login_username = user_info.get('upn', username)
-            
-            user = User(
-                username=login_username,
-                ad_email=user_info.get('email', ''),
-                phone=user_info.get('mobile', ''),
-                display_name=user_info.get('display_name', username),
-                ad_dn=user_info.get('dn', ''),
-                # 不存储密码，使用 LDAP 认证
-                is_active=True
-            )
-            db.session.add(user)
-            db.session.commit()
-            print(f'[LDAP 登录] 创建新用户：{login_username}, ID={user.id}')
-        except Exception as e:
-            print(f'[LDAP 登录] 创建用户失败：{str(e)}')
-            db.session.rollback()
-            return redirect(url_for('ldap_auth.login', error='无法创建本地用户', username=username))
-    else:
-        print(f'[LDAP 登录] 用户已存在：{user.username}, ID={user.id}')
-    
-    # 设置会话 - 使用数据库中的用户 ID
-    session['user_id'] = user.id
-    session['username'] = user.username
-    session['user_role'] = 'admin' if user.username == 'admin' else 'user'
-    session['mfa_enabled'] = user.mfa_enabled if hasattr(user, 'mfa_enabled') else False
-    
-    # 记录登录日志
-    from utils.logger import log_operation
-    log_operation(
-        'login',
-        target_user=user.username,
-        details=f'用户 {user.username} 登录成功'
-    )
-    
-    # 重定向
-    if session['user_role'] == 'admin':
-        return redirect(url_for('admin.dashboard'))
-    else:
-        return redirect(url_for('user.index'))
+
+    # 非 admin 不再支持登录（系统已改为公开"忘记密码"自助重置）
+    return redirect(url_for('ldap_auth.login', error='普通用户请使用"忘记密码"自助重置', username=username))
 
 
 @ldap_auth_bp.route('/logout')
@@ -439,3 +254,4 @@ def logout():
     """登出"""
     session.clear()
     return redirect(url_for('ldap_auth.login'))
+

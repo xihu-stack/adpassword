@@ -126,25 +126,20 @@ def create_app(testing=False):
     # 注册蓝图
     from routes.ldap_auth import ldap_auth_bp
     from routes.admin import admin_bp
-    from routes.user import user_bp
     from routes.mock_cas import mock_cas_bp
     from routes.reset import reset_bp
 
     app.register_blueprint(ldap_auth_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
-    app.register_blueprint(user_bp, url_prefix='/user')
     app.register_blueprint(mock_cas_bp, url_prefix='/mock-cas')
     app.register_blueprint(reset_bp)
     
     # 根路由 - 重定向到登录页
     @app.route('/')
     def index():
-        if 'user_id' in session:
-            if session.get('user_role') == 'admin':
-                return redirect(url_for('admin.dashboard'))
-            else:
-                return redirect(url_for('user.index'))
-        return redirect(url_for('ldap_auth.login'))
+        if 'user_id' in session and session.get('user_role') == 'admin':
+            return redirect(url_for('admin.dashboard'))
+        return redirect(url_for('reset.reset_page'))
     
     # 健康检查接口（用于负载均衡器）
     @app.route('/health')
