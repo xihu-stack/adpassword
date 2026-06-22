@@ -126,6 +126,51 @@ class ResetService:
 
         return True, info
 
+    # ---------- 发码与校验 ----------
+    def issue_sms_code(self, user_dn, phone):
+        allowed, reason = self.check_rate_limits(phone, None, None)
+        if not allowed:
+            return False, reason or '请求过于频繁'
+        code = '%06d' % secrets.randbelow(1000000)
+        hashed = bcrypt.hashpw(code.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        rec = SmsVerificationCode(
+            phone=phone, code=hashed, purpose='reset', fail_count=0,
+            expires_at=datetime.utcnow() + timedelta(minutes=CODE_TTL_MINUTES))
+        db.session.add(rec)
+        db.session.commit()
+        self._increment_rate(phone, None, None)
+        ok, msg = self.sms.send_verification_code(phone, code)
+        if not ok:
+            return False, '验证码发送失败，请稍后重试'
+        return True, 'OK'
+
+    def verify_sms_code(self, phone, code):
+        rec = (SmsVerificationCode.query
+               .filter_by(phone=phone, is_used=False, purpose='reset')
+               .order_by(SmsVerificationCode.created_at.desc()).first())
+        if not rec:
+            return False, '请先获取验证码'
+        if datetime.utcnow() > rec.expires_at:
+            rec.is_used = True
+            db.session.commit()
+            return False, '验证码已失效，请重新获取'
+        if rec.fail_count >= MAX_FAIL_COUNT:
+            rec.is_used = True
+            db.session.commit()
+            return False, '错误次数过多，请重新获取验证码'
+        if not bcrypt.checkpw((code or '').encode('utf-8'), rec.code.encode('utf-8')):
+            rec.fail_count += 1
+            db.session.commit()
+            remaining = MAX_FAIL_COUNT - rec.fail_count
+            if remaining <= 0:
+                rec.is_used = True
+                db.session.commit()
+                return False, '错误次数过多，请重新获取验证码'
+            return False, '验证码错误，还剩 %d 次' % remaining
+        rec.is_used = True
+        db.session.commit()
+        return True, 'OK'
+
 
 def normalize_email(email):
     return (email or '').strip().lower()

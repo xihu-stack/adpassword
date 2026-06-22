@@ -109,3 +109,45 @@ def test_find_protected_by_group(app, fake_ldap, fake_sms):
         svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
         matched, info = svc.find_user_by_email_phone('a@x.com', '13800000000')
         assert matched is False
+
+
+def test_issue_and_verify_ok(app, fake_ldap, fake_sms):
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        ok, msg = svc.issue_sms_code('CN=u1,DC=test,DC=com', '13800000000')
+        assert ok, msg
+        assert len(fake_sms.sent) == 1
+        code = fake_sms.sent[0][1]
+        ok2, _ = svc.verify_sms_code('13800000000', code)
+        assert ok2 is True
+
+
+def test_verify_wrong_code_increments_fail(app, fake_ldap, fake_sms):
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        svc.issue_sms_code('CN=u1,DC=test,DC=com', '13800000000')
+        for i in range(4):
+            ok, _ = svc.verify_sms_code('13800000000', '000000')
+            assert ok is False
+        # 第 5 次错误后码作废
+        ok, msg = svc.verify_sms_code('13800000000', '000000')
+        assert ok is False
+
+
+def test_verify_expired(app, fake_ldap, fake_sms):
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        svc.issue_sms_code('CN=u1,DC=test,DC=com', '13800000000')
+        SmsVerificationCode.query.first().expires_at = datetime.utcnow() - timedelta(minutes=1)
+        db.session.commit()
+        code = fake_sms.sent[0][1]
+        ok, _ = svc.verify_sms_code('13800000000', code)
+        assert ok is False
+
+
+def test_issue_cooldown_blocks(app, fake_ldap, fake_sms):
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        assert svc.issue_sms_code('CN=u1,DC=test,DC=com', '13800000000')[0] is True
+        ok, _ = svc.issue_sms_code('CN=u1,DC=test,DC=com', '13800000000')
+        assert ok is False  # 60s 冷却
