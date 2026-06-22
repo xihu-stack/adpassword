@@ -1,5 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from services import secret_crypto
 
 db = SQLAlchemy()
 
@@ -36,6 +37,20 @@ class Domain(db.Model):
             'is_active': self.is_active,
         }
 
+    def set_admin_password(self, plain):
+        self.admin_password = secret_crypto.encrypt_value(plain)
+
+    @property
+    def admin_password_plain(self):
+        return secret_crypto.decrypt_value(self.admin_password)
+
+    def set_ldap_password(self, plain):
+        self.ldap_password = secret_crypto.encrypt_value(plain)
+
+    @property
+    def ldap_password_plain(self):
+        return secret_crypto.decrypt_value(self.ldap_password) if self.ldap_password else None
+
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -45,9 +60,6 @@ class User(db.Model):
     password_hash = db.Column(db.String(255))  # 本地密码哈希（管理员重置时使用）
     phone = db.Column(db.String(20))
     role = db.Column(db.String(20), default='user')  # 'admin' or 'user'
-    mfa_secret = db.Column(db.String(100))
-    mfa_enabled = db.Column(db.Boolean, default=False)
-    mfa_bound_at = db.Column(db.DateTime)  # MFA 绑定时间
     domain_id = db.Column(db.Integer, db.ForeignKey('domains.id'))
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -66,8 +78,6 @@ class User(db.Model):
             'username': self.username,
             'phone': self.phone,
             'role': self.role,
-            'mfa_enabled': self.mfa_enabled,
-            'mfa_bound_at': self.mfa_bound_at.isoformat() if self.mfa_bound_at else None,
             'email': self.ad_email,
             'display_name': self.ad_display_name,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -95,12 +105,19 @@ class SmsConfig(db.Model):
             'is_active': self.is_active,
         }
 
+    def set_access_secret(self, plain):
+        self.access_secret = secret_crypto.encrypt_value(plain)
+
+    @property
+    def access_secret_plain(self):
+        return secret_crypto.decrypt_value(self.access_secret)
+
 
 class AdminLog(db.Model):
     __tablename__ = 'admin_logs'
     
     id = db.Column(db.Integer, primary_key=True)
-    admin_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    admin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     action = db.Column(db.String(100), nullable=False)
     target_user = db.Column(db.String(100))
     details = db.Column(db.Text)
