@@ -7,21 +7,26 @@
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Microsoft YaHei',Arial,sans-serif;
-           background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+           background:
+             radial-gradient(circle at 18% 18%, rgba(255,255,255,.14), transparent 42%),
+             radial-gradient(circle at 82% 82%, rgba(255,255,255,.08), transparent 42%),
+             linear-gradient(135deg,#0f2b5c 0%,#1e3c72 55%,#2a5298 100%);
            min-height:100vh; display:flex; justify-content:center; align-items:center; padding:20px; }
-    .card { background:#fff; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.3);
+    .card { background:#fff; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.28);
             width:100%; max-width:440px; overflow:hidden; }
-    .head { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; padding:26px; text-align:center; }
-    .head h1 { font-size:22px; margin-bottom:6px; }
-    .head p { font-size:13px; opacity:.9; }
+    .head { background:#fff; color:#1e3c72; padding:24px 26px 16px; text-align:center; border-bottom:1px solid #f0f0f0; }
+    .head .logo { height:54px; margin:0 auto 10px; display:block; object-fit:contain; }
+    .head h1 { font-size:20px; margin-bottom:6px; color:#1e3c72; }
+    .head p { font-size:13px; color:#8a94a6; }
     .body { padding:30px 26px; }
     .step { display:none; } .step.active { display:block; }
     label { display:block; font-size:13px; color:#333; margin-bottom:6px; font-weight:600; }
-    input { width:100%; padding:11px 13px; border:2px solid #e0e0e0; border-radius:8px; font-size:14px; margin-bottom:14px; }
-    input:focus { outline:none; border-color:#667eea; }
+    input { width:100%; padding:11px 13px; border:2px solid #e0e0e0; border-radius:8px; font-size:14px; margin-bottom:14px; transition:border-color .2s; }
+    input:focus { outline:none; border-color:#2a5298; }
     .row { display:flex; gap:10px; } .row input { margin-bottom:14px; }
     button { width:100%; padding:13px; border:none; border-radius:8px; font-size:15px; font-weight:700;
-             color:#fff; background:linear-gradient(135deg,#667eea,#764ba2); cursor:pointer; }
+             color:#fff; background:linear-gradient(135deg,#1e3c72,#2a5298); cursor:pointer; transition:opacity .2s; }
+    button:hover { opacity:.92; }
     button:disabled { opacity:.6; cursor:not-allowed; }
     .btn-ghost { background:#eee; color:#666; margin-top:10px; }
     .msg { font-size:13px; padding:10px 12px; border-radius:6px; margin-bottom:14px; display:none; }
@@ -33,7 +38,8 @@
 <body>
   <div class="card">
     <div class="head">
-      <h1>🔐 域控密码自助重置</h1>
+      <img src="{{ url_for('static', filename='logo.jpg') }}" alt="LOGO" class="logo">
+      <h1>域控密码自助重置</h1>
       <p>忘记密码？验证邮箱与手机号即可重置</p>
     </div>
     <div class="body">
@@ -42,9 +48,9 @@
       <div class="step active" id="step1">
         <div class="msg" id="msg1"></div>
         <label>邮箱</label>
-        <input id="email" type="text" placeholder="name@company.com">
+        <input id="email" type="text" placeholder="name@helixon.com">
         <label>手机号</label>
-        <input id="phone" type="tel" placeholder="登记在 AD 中的手机号">
+        <input id="phone" type="tel" placeholder="薪福通预留手机号">
         <button onclick="verifyIdentity()">下一步：验证身份</button>
         <p class="hint">若手机号与登记不一致，请联系 IT/管理员更新。</p>
       </div>
