@@ -122,6 +122,7 @@ def dashboard():
         </style>
     </head>
     <body>
+<script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
         <div class="header">
             <h1>🔐 AD 密码管理系统 - 管理后台</h1>
             <div class="user-info">
@@ -310,6 +311,7 @@ def domains_page():
         </style>
     </head>
     <body>
+<script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
         <div class="header">
             <h1>🌐 域配置管理</h1>
             <div>
@@ -345,6 +347,7 @@ def domains_page():
                 <div id="addForm" style="display: none; margin-top: 30px;">
                     <h3 style="margin-bottom: 20px;">添加域配置</h3>
                     <form method="POST" action="/admin/domains" style="max-width: 600px;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div style="margin-bottom: 15px;">
                             <label style="display: block; margin-bottom: 5px; font-weight: bold;">域名称</label>
                             <input type="text" name="name" placeholder="例如：example.com" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
@@ -668,6 +671,7 @@ def sms_page():
         </style>
     </head>
     <body>
+<script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
         <div class="header">
             <h1>💬 短信配置</h1>
             <div>
@@ -882,6 +886,7 @@ def logs_page():
         </style>
     </head>
     <body>
+<script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
         <div class="header">
             <h1>📊 操作日志</h1>
             <div>
@@ -1295,6 +1300,7 @@ def edit_domain_page(domain_id):
         </style>
     </head>
     <body>
+<script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
         <div class="header">
             <h1>✏️ 编辑域配置</h1>
             <div>
@@ -1316,6 +1322,7 @@ def edit_domain_page(domain_id):
                 </div>
                 
                 <form method="POST" action="/admin/domains/{{ domain.id }}/edit" id="editForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="domain_id" value="{{ domain.id }}">
                     
                     <div class="form-group">

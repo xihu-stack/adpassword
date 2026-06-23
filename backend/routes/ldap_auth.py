@@ -137,6 +137,7 @@ def login():
         </style>
     </head>
     <body>
+<script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
         <div class="login-container">
             <div class="login-header">
                 <h1>AD 密码管理系统</h1>
@@ -148,6 +149,7 @@ def login():
                 {% endif %}
                 
                 <form method="POST" action="{{ url_for('ldap_auth.authenticate') }}" id="loginForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="form-group">
                         <label for="username">用户名 / Username</label>
                         <input type="text" id="username" name="username" required 
