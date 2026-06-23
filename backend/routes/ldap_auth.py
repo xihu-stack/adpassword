@@ -43,6 +43,8 @@ def login():
                 padding: 20px;
             }
             .login-container {
+                position: relative;
+                z-index: 1;
                 background: white;
                 border-radius: 20px;
                 box-shadow: 0 20px 60px rgba(0,0,0,0.3);
@@ -137,6 +139,7 @@ def login():
         </style>
     </head>
     <body>
+        <div id="bg-host"></div>
 <script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
         <div class="login-container">
             <div class="login-header">
@@ -184,6 +187,8 @@ def login():
                 document.getElementById('loading').style.display = 'block';
             });
         </script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+        <script src="{{ url_for('static', filename='bg.js') }}"></script>
     </body>
     </html>
     '''

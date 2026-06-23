@@ -10,15 +10,7 @@
     body { font-family:'Microsoft YaHei',Arial,sans-serif;
            background:linear-gradient(135deg,#0b1e3f 0%,#15376b 50%,#1f5fa8 100%);
            min-height:100vh; display:flex; justify-content:center; align-items:center; padding:20px; }
-    #bg { position:fixed; inset:0; z-index:1; }
-    .bg-aura { position:fixed; inset:0; z-index:0; overflow:hidden; }
-    .bg-aura span { position:absolute; border-radius:50%; filter:blur(72px); opacity:.5; }
-    .bg-aura .a { width:480px;height:480px;background:#2a7fff;left:-120px;top:-100px;animation:fa 16s ease-in-out infinite; }
-    .bg-aura .b { width:420px;height:420px;background:#00c2ff;right:-110px;bottom:-130px;animation:fb 20s ease-in-out infinite; }
-    .bg-aura .c { width:360px;height:360px;background:#6f5bff;left:38%;top:24%;animation:fc 18s ease-in-out infinite; }
-    @keyframes fa{0%,100%{transform:translate(0,0)}50%{transform:translate(80px,60px)}}
-    @keyframes fb{0%,100%{transform:translate(0,0)}50%{transform:translate(-70px,-50px)}}
-    @keyframes fc{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-40px,40px) scale(1.15)}}
+    #bg-host { position:fixed; inset:0; z-index:0; }
     .wrap { position:relative; z-index:2; width:100%; max-width:430px; text-align:center; }
     .logo { height:62px; margin:0 auto 18px; display:block; object-fit:contain;
             filter:drop-shadow(0 4px 14px rgba(0,0,0,.35)); }
@@ -46,8 +38,7 @@
   </style>
 </head>
 <body>
-  <div class="bg-aura"><span class="a"></span><span class="b"></span><span class="c"></span></div>
-  <canvas id="bg"></canvas>
+  <div id="bg-host"></div>
   <div class="wrap">
     <img src="{{ url_for('static', filename='logo.png') }}" alt="华深智药" class="logo">
     <div class="card">
@@ -104,34 +95,8 @@
     </div>
   </div>
 
-<script>
-  /* 科技感粒子网络背景（纯原生 Canvas，无外部依赖，内网可用） */
-  (function(){
-    const c=document.getElementById('bg'), x=c.getContext('2d');
-    let W,H,parts;
-    function resize(){W=c.width=innerWidth;H=c.height=innerHeight;}
-    function init(){
-      parts=[]; const n=Math.min(90,Math.floor(W*H/16000));
-      for(let i=0;i<n;i++) parts.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4});
-    }
-    function tick(){
-      x.clearRect(0,0,W,H);
-      for(let i=0;i<parts.length;i++){
-        const p=parts[i]; p.x+=p.vx; p.y+=p.vy;
-        if(p.x<0||p.x>W)p.vx*=-1; if(p.y<0||p.y>H)p.vy*=-1;
-        x.beginPath(); x.arc(p.x,p.y,1.8,0,7); x.fillStyle='rgba(170,215,255,.75)'; x.fill();
-        for(let j=i+1;j<parts.length;j++){
-          const q=parts[j],dx=p.x-q.x,dy=p.y-q.y,d=Math.hypot(dx,dy);
-          if(d<130){ x.strokeStyle='rgba(130,185,255,'+(.22*(1-d/130))+')'; x.lineWidth=1;
-                     x.beginPath(); x.moveTo(p.x,p.y); x.lineTo(q.x,q.y); x.stroke(); }
-        }
-      }
-      requestAnimationFrame(tick);
-    }
-    addEventListener('resize',()=>{resize();init();});
-    resize();init();tick();
-  })();
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script src="{{ url_for('static', filename='bg.js') }}"></script>
 <script>
   const CSRF = "{{ csrf_token() }}";
   function headers(json){ const h={}; if(json) h['Content-Type']='application/json'; h['X-CSRFToken']=CSRF; return h; }
