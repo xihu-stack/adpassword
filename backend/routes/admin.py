@@ -21,7 +21,7 @@ def dashboard():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>管理后台 - AD 密码管理系统</title>
+        <title>管理后台 - 华深智药</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
@@ -30,7 +30,7 @@ def dashboard():
                 min-height: 100vh;
             }
             .header {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #15376b 0%, #1f5fa8 100%);
                 color: white;
                 padding: 20px 40px;
                 display: flex;
@@ -77,7 +77,7 @@ def dashboard():
                 margin-top: 30px;
             }
             .stat-card {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #15376b 0%, #1f5fa8 100%);
                 color: white;
                 padding: 30px;
                 border-radius: 10px;
@@ -124,7 +124,10 @@ def dashboard():
     <body>
 <script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
         <div class="header">
-            <h1>🔐 AD 密码管理系统 - 管理后台</h1>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="华深智药" style="height:34px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.25));">
+                <h1>华深智药 · 管理后台</h1>
+            </div>
             <div class="user-info">
                 <span>欢迎，{{ username }}</span>
                 <a href="/logout" class="logout-btn">退出登录</a>
@@ -134,7 +137,7 @@ def dashboard():
         <div class="container">
             <div class="welcome-card">
                 <h2>欢迎回来，{{ username }}！</h2>
-                <p>这是 AD 密码管理系统的管理后台。您可以在这里管理域配置、用户信息、短信设置等。</p>
+                <p>这是 华深智药的管理后台。您可以在这里管理域配置、用户信息、短信设置等。</p>
                 
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -264,12 +267,12 @@ def domains_page():
     <html lang="zh-CN">
     <head>
         <meta charset="UTF-8">
-        <title>域配置管理 - AD 密码管理系统</title>
+        <title>域配置管理 - 华深智药</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f5f7fa; }
             .header {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #15376b 0%, #1f5fa8 100%);
                 color: white;
                 padding: 20px 40px;
                 display: flex;
@@ -292,7 +295,7 @@ def domains_page():
                 margin-bottom: 20px;
                 padding: 10px 20px;
                 background: white;
-                color: #667eea;
+                color: #15376b;
                 text-decoration: none;
                 border-radius: 4px;
             }
@@ -639,12 +642,12 @@ def sms_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>短信配置 - AD 密码管理系统</title>
+        <title>短信配置 - 华深智药</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f5f7fa; }
             .header {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #15376b 0%, #1f5fa8 100%);
                 color: white;
                 padding: 20px 40px;
                 display: flex;
@@ -652,16 +655,16 @@ def sms_page():
                 align-items: center;
             }
             .container { max-width: 1000px; margin: 0 auto; padding: 30px; }
-            .back-btn { display: inline-block; margin-bottom: 20px; padding: 10px 20px; background: white; color: #667eea; text-decoration: none; border-radius: 4px; }
+            .back-btn { display: inline-block; margin-bottom: 20px; padding: 10px 20px; background: white; color: #15376b; text-decoration: none; border-radius: 4px; }
             .card { background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
             .card-title { font-size: 20px; color: #333; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
             .form-group { margin-bottom: 20px; }
             .form-group label { display: block; margin-bottom: 8px; color: #333; font-weight: 500; }
             .form-group input { width: 100%; padding: 12px 15px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
-            .form-group input:focus { outline: none; border-color: #667eea; }
+            .form-group input:focus { outline: none; border-color: #15376b; }
             .form-group small { display: block; margin-top: 5px; color: #999; font-size: 12px; }
             .btn { padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
-            .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+            .btn-primary { background: linear-gradient(135deg, #15376b 0%, #1f5fa8 100%); color: white; }
             .btn-primary:hover { opacity: 0.9; }
             .btn-test { background: #67C23A; color: white; margin-left: 10px; }
             .form-actions { margin-top: 30px; text-align: right; }
@@ -701,7 +704,7 @@ def sms_page():
                     
                     <div class="form-group">
                         <label for="signName">短信签名 <span id="signNameStatus" class="status-badge status-inactive">未配置</span></label>
-                        <input type="text" id="signName" name="sign_name" required placeholder="请输入短信签名，如：AD 密码管理系统">
+                        <input type="text" id="signName" name="sign_name" required placeholder="请输入短信签名，如：华深智药">
                         <small>短信签名会显示在短信内容开头，需提前在阿里云控制台申请</small>
                     </div>
                     
@@ -846,12 +849,12 @@ def logs_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>操作日志 - AD 密码管理系统</title>
+        <title>操作日志 - 华深智药</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f5f7fa; }
             .header {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #15376b 0%, #1f5fa8 100%);
                 color: white;
                 padding: 20px 40px;
                 display: flex;
@@ -859,7 +862,7 @@ def logs_page():
                 align-items: center;
             }
             .container { max-width: 1400px; margin: 0 auto; padding: 30px; }
-            .back-btn { display: inline-block; margin-bottom: 20px; padding: 10px 20px; background: white; color: #667eea; text-decoration: none; border-radius: 4px; }
+            .back-btn { display: inline-block; margin-bottom: 20px; padding: 10px 20px; background: white; color: #15376b; text-decoration: none; border-radius: 4px; }
             .card { background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
             .card-title { font-size: 20px; color: #333; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
             .table-container { overflow-x: auto; }
@@ -875,12 +878,12 @@ def logs_page():
             .badge-danger { background: #fff1f0; color: #f5222d; }
             .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 20px; }
             .pagination button { padding: 8px 15px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; }
-            .pagination button.active { background: #667eea; color: white; border-color: #667eea; }
+            .pagination button.active { background: #15376b; color: white; border-color: #15376b; }
             .pagination button:disabled { background: #f5f5f5; cursor: not-allowed; }
             .filter-form { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
             .filter-form select, .filter-form input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; }
             .btn { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; }
-            .btn-primary { background: #667eea; color: white; }
+            .btn-primary { background: #15376b; color: white; }
             .empty-state { text-align: center; padding: 60px 20px; color: #999; }
             .empty-state-icon { font-size: 64px; margin-bottom: 20px; }
         </style>
@@ -1118,7 +1121,7 @@ def edit_domain_page(domain_id):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>编辑域配置 - AD 密码管理系统</title>
+        <title>编辑域配置 - 华深智药</title>
         <style>
             body {
                 font-family: 'Microsoft YaHei', Arial, sans-serif;
@@ -1127,7 +1130,7 @@ def edit_domain_page(domain_id):
                 padding: 0;
             }
             .header {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #15376b 0%, #1f5fa8 100%);
                 color: white;
                 padding: 20px 40px;
                 display: flex;
@@ -1157,7 +1160,7 @@ def edit_domain_page(domain_id):
             .back-btn {
                 display: inline-block;
                 padding: 10px 20px;
-                background: #667eea;
+                background: #15376b;
                 color: white;
                 text-decoration: none;
                 border-radius: 4px;
@@ -1211,7 +1214,7 @@ def edit_domain_page(domain_id):
             .checkbox-label input[type="checkbox"] {
                 width: auto;
                 cursor: pointer;
-                accent-color: #667eea;
+                accent-color: #15376b;
             }
             .checkbox-description {
                 color: #666;
@@ -1221,7 +1224,7 @@ def edit_domain_page(domain_id):
             }
             .form-group input:focus {
                 outline: none;
-                border-color: #667eea;
+                border-color: #15376b;
             }
             .form-actions {
                 margin-top: 30px;

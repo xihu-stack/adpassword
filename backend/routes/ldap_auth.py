@@ -30,12 +30,12 @@ def login():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>AD 密码管理系统 - LDAP 登录</title>
+        <title>华深智药 - LDAP 登录</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
                 font-family: 'Microsoft YaHei', Arial, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #15376b 0%, #1f5fa8 100%);
                 display: flex;
                 justify-content: center;
                 align-items: center;
@@ -51,7 +51,7 @@ def login():
                 max-width: 450px;
             }
             .login-header {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #15376b 0%, #1f5fa8 100%);
                 color: white;
                 padding: 30px;
                 text-align: center;
@@ -87,12 +87,12 @@ def login():
             }
             .form-group input:focus {
                 outline: none;
-                border-color: #667eea;
+                border-color: #15376b;
             }
             .btn-login {
                 width: 100%;
                 padding: 14px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #15376b 0%, #1f5fa8 100%);
                 color: white;
                 border: none;
                 border-radius: 8px;
@@ -131,7 +131,7 @@ def login():
             .loading {
                 display: none;
                 text-align: center;
-                color: #667eea;
+                color: #15376b;
                 margin-top: 10px;
             }
         </style>
@@ -140,8 +140,9 @@ def login():
 <script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
         <div class="login-container">
             <div class="login-header">
-                <h1>AD 密码管理系统</h1>
-                <p>Active Directory 身份认证</p>
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="华深智药" style="height:46px;margin-bottom:10px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.3));">
+                <h1>华深智药</h1>
+                <p>管理员登录</p>
             </div>
             <div class="login-body">
                 {% if error %}
