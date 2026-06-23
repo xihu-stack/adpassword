@@ -199,8 +199,16 @@ app = create_app()
 
 
 if __name__ == '__main__':
+    # Windows 控制台默认 GBK 编码无法输出 emoji，强制 UTF-8 避免启动横幅崩溃
+    import sys
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
     app = create_app()
-    
+
     # 从系统设置中读取端口和主机配置
     try:
         with app.app_context():

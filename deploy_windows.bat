@@ -1,6 +1,8 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
+set PYTHONUTF8=1
+set PYTHONIOENCODING=utf-8
 echo ============================================
 echo   AD 密码自助重置系统 - 一键部署 (Windows)
 echo ============================================

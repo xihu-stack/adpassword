@@ -1,6 +1,8 @@
 #!/bin/bash
 # AD 密码自助重置系统 - 一键部署 (Linux)
 set -e
+export PYTHONUTF8=1
+export PYTHONIOENCODING=utf-8
 
 cd "$(dirname "$0")/backend"
 PY=.venv/bin/python
