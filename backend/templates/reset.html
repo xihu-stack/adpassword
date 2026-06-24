@@ -96,7 +96,7 @@
   </div>
 
 <script src="{{ url_for('static', filename='p5.min.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='bg.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='bg.js') }}?v=3"></script>
 <script>
   const CSRF = "{{ csrf_token() }}";
   function headers(json){ const h={}; if(json) h['Content-Type']='application/json'; h['X-CSRFToken']=CSRF; return h; }
