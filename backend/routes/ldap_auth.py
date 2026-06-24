@@ -188,7 +188,7 @@ def login():
             });
         </script>
         <script src="{{ url_for('static', filename='p5.min.js') }}?v=1"></script>
-        <script src="{{ url_for('static', filename='bg.js') }}?v=3"></script>
+        <script src="{{ url_for('static', filename='bg.js') }}?v=4"></script>
     </body>
     </html>
     '''
