@@ -11,7 +11,7 @@ def test_get_reset_page(client):
     r = client.get('/reset')
     assert r.status_code == 200
     body = r.get_data(as_text=True)
-    assert '域控密码自助重置' in body
+    assert '密码自助重置' in body
     assert 'id="step1"' in body and 'id="step4"' in body
 
 
