@@ -42,6 +42,7 @@ def login():
                 min-height: 100vh;
                 padding: 20px;
             }
+            #bg-host { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
             .login-container {
                 position: relative;
                 z-index: 1;
