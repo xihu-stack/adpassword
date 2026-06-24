@@ -96,7 +96,7 @@
   </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
-<script src="{{ url_for('static', filename='bg.js') }}"></script>
+<script src="{{ url_for('static', filename='bg.js') }}?v=2"></script>
 <script>
   const CSRF = "{{ csrf_token() }}";
   function headers(json){ const h={}; if(json) h['Content-Type']='application/json'; h['X-CSRFToken']=CSRF; return h; }

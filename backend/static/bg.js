@@ -1,95 +1,106 @@
 /* =============================================================================
- *  华深智药 · 密码重置  —  背景「Helix Flow / 螺旋流场」
+ *  华深智药 · 密码重置  —  背景「Luminous Network / 光网」
  *
  *  算法哲学（Algorithmic Philosophy）：
- *  一张不可见的 Perlin 噪声力场铺满整个屏幕，成百上千的微粒如风中之絮，
- *  顺着力线无声漂流。每一帧用一层半透明的深蓝薄雾覆盖画布，旧轨迹缓缓
- *  褪去、新轨迹层层叠加——于是流动的光网在平衡中不断重生。粒子色取自一支
- *  冷光调色板（青/蓝/蓝绿/淡紫），亮轨迹在深蓝底色上灼灼发亮。
+ *  上百个发光节点散布于暗夜，顺 Perlin 力场缓缓漂移；彼此靠近时便以光线相连，
+ *  距离越近、光丝越亮。节点带各自相位轻轻闪烁（twinkle），加法混色（ADD）让
+ *  交叠的光丝汇聚成灼热的枢纽。整张光网随力场整体流转、不断重组——
+ *  既有星图般的秩序，又有数据流般的动感。
  *
- *  这是一段精心调校（meticulously crafted）的生成式算法：噪声尺度、漂移速度、
- *  拖尾衰减、粒子寿命均经反复打磨，力求复杂而不嘈杂、有序而不死板。种子化
- *  噪声保证每次加载构图一致——同一片流场，永恒地流动。
+ *  这是一段精心调校（meticulously crafted）的生成式算法：节点密度、连接阈值、
+ *  漂移速度、拖尾衰减、闪烁频率均经反复打磨。种子化噪声保证构图稳定可复现。
  *
- *  隐喻：药物分子在能量场中流转寻路（致敬华深智药 AI 制药）。
- *
- *  用法：页面加载 p5（CDN）后引入本文件，并提供一个 <div id="bg-host"></div>。
- *  画布固定铺满视口、z-index:0，置于内容之下。
+ *  隐喻：分子节点在能量网中互联、跃迁（致敬华深智药 AI 制药）。
  * ========================================================================== */
 new p5((p) => {
-  let particles = [];
+  let nodes = [];
   let zoff = 0;
 
-  // 冷光调色板（RGB）—— 亮轨迹
   const PALETTE = [
-    [127, 212, 255],  // 青
-    [ 90, 168, 255],  // 蓝
-    [155, 232, 255],  // 浅青
-    [120, 250, 230],  // 蓝绿
-    [191, 166, 255],  // 淡紫
+    [127, 212, 255],
+    [ 90, 168, 255],
+    [155, 232, 255],
+    [120, 250, 230],
+    [191, 166, 255],
   ];
-  const BASE = [14, 38, 78];   // 基底深蓝（wash 色，决定整体明度，偏蓝不压抑）
-  const SCALE = 0.0022;        // 噪声尺度（越小流场越宽阔）
-  const SPEED = 1.15;          // 粒子漂移速度
-  const FADE = 15;             // 拖尾衰减：越小拖尾越长
-  const SEED = 20260623;       // 固定种子，构图一致
+  const BASE = [10, 28, 60];     // 基底深蓝（wash 色）
+  const SCALE = 0.0018;          // 噪声尺度
+  const SPEED = 1.9;             // 节点漂移速度（越大越动感）
+  const LINK = 152;              // 连接距离阈值
+  const FADE = 28;               // 拖尾衰减（越大越清爽，运动越明显）
+  const SEED = 20260623;
 
   p.setup = function () {
     const c = p.createCanvas(p.windowWidth, p.windowHeight);
     if (document.getElementById('bg-host')) c.parent('bg-host');
     p.pixelDensity(1);
-    p.noFill();
     p.background(BASE[0], BASE[1], BASE[2]);
     p.noiseSeed(SEED);
-    initParticles();
+    initNodes();
   };
 
-  function initParticles() {
-    particles = [];
-    const n = Math.min(560, Math.floor((p.width * p.height) / 3600));
-    for (let i = 0; i < n; i++) particles.push(spawn());
-  }
-
-  function spawn() {
-    return {
-      x: p.random(p.width),
-      y: p.random(p.height),
-      px: 0,
-      py: 0,
-      life: p.random(60, 200),
-      col: PALETTE[Math.floor(p.random(PALETTE.length))],
-    };
+  function initNodes() {
+    nodes = [];
+    const n = Math.min(130, Math.floor((p.width * p.height) / 14000));
+    for (let i = 0; i < n; i++) {
+      nodes.push({
+        x: p.random(p.width),
+        y: p.random(p.height),
+        col: PALETTE[Math.floor(p.random(PALETTE.length))],
+        ph: p.random(p.TWO_PI),
+      });
+    }
   }
 
   p.draw = function () {
-    // 半透明基底 wash：制造拖尾衰减
+    // 1) BLEND 薄雾：让旧光丝渐褪
+    p.blendMode(p.BLEND);
     p.noStroke();
     p.fill(BASE[0], BASE[1], BASE[2], FADE);
     p.rect(0, 0, p.width, p.height);
 
-    zoff += 0.0016;             // 力场缓慢演化
-    p.strokeWeight(1.1);
+    // 2) 节点顺力场漂移（环面 wrapping，密度恒定）
+    zoff += 0.003;
+    for (const q of nodes) {
+      const a = p.noise(q.x * SCALE, q.y * SCALE, zoff) * p.TWO_PI * 2;
+      q.x += Math.cos(a) * SPEED;
+      q.y += Math.sin(a) * SPEED;
+      if (q.x < 0) q.x += p.width;
+      else if (q.x > p.width) q.x -= p.width;
+      if (q.y < 0) q.y += p.height;
+      else if (q.y > p.height) q.y -= p.height;
+    }
 
-    for (const q of particles) {
-      const angle = p.noise(q.x * SCALE, q.y * SCALE, zoff) * p.TWO_PI * 3;
-      q.px = q.x; q.py = q.y;
-      q.x += Math.cos(angle) * SPEED;
-      q.y += Math.sin(angle) * SPEED;
-      q.life -= 1;
-
-      p.stroke(q.col[0], q.col[1], q.col[2], 120);
-      p.line(q.px, q.py, q.x, q.y);
-
-      // 寿命到或飞出视口 → 重生于随机点
-      if (q.life <= 0 || q.x < -5 || q.x > p.width + 5 || q.y < -5 || q.y > p.height + 5) {
-        Object.assign(q, spawn());
+    // 3) ADD 混色：连接线 + 发光节点（交叠处自然变亮，呈枢纽感）
+    p.blendMode(p.ADD);
+    p.strokeWeight(1);
+    for (let i = 0; i < nodes.length; i++) {
+      const A = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const B = nodes[j];
+        const dx = A.x - B.x, dy = A.y - B.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < LINK) {
+          p.stroke(95, 175, 255, (1 - d / LINK) * 150);
+          p.line(A.x, A.y, B.x, B.y);
+        }
       }
+    }
+    p.noStroke();
+    for (const q of nodes) {
+      const tw = Math.sin(p.frameCount * 0.05 + q.ph) * 0.5 + 0.5;  // 0..1 闪烁
+      const r = 2 + tw * 1.8;
+      p.fill(q.col[0], q.col[1], q.col[2], 36);
+      p.circle(q.x, q.y, r * 5);                                    // 柔光晕
+      p.fill(q.col[0], q.col[1], q.col[2], 140 + tw * 110);
+      p.circle(q.x, q.y, r * 2);                                    // 亮核
     }
   };
 
   p.windowResized = function () {
     p.resizeCanvas(p.windowWidth, p.windowHeight);
+    p.blendMode(p.BLEND);
     p.background(BASE[0], BASE[1], BASE[2]);
-    initParticles();
+    initNodes();
   };
 });
