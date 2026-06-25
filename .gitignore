@@ -18,6 +18,9 @@ instance/
 
 # Environment
 .env
+.env.*
+!.env.example
+!.env.production.example
 .flaskenv
 
 # IDE
