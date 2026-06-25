@@ -37,12 +37,16 @@ else
     echo "[3/4] 已存在 .env，跳过生成"
 fi
 
-# 4) 启动
+# 4) 启动（演示模式，开箱即用）
 echo "[4/4] 启动服务..."
 echo "--------------------------------------------"
 echo " 重置页面: http://127.0.0.1:5000/reset"
 echo " 管理后台: http://127.0.0.1:5000/   (admin / admin)"
 echo " 演示账号: 邮箱任意 + 手机号 13800000000"
 echo " 演示验证码会显示在页面提示和本控制台"
+echo "--------------------------------------------"
+echo " 👉 正式部署：cp .env.production.example .env"
+echo "    设 DEMO_MODE=false / 真实 PostgreSQL / 运行"
+echo "    database/2026-06-17-reset-migration.sql，再用 systemd 启动"
 echo "--------------------------------------------"
 exec $PY app.py
