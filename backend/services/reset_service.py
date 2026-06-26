@@ -17,6 +17,8 @@ HOURLY_LIMIT_IP = 20
 CODE_TTL_MINUTES = 5
 MAX_FAIL_COUNT = 5
 RESET_SESSION_MINUTES = 10
+IDENTITY_FAIL_LIMIT = 10       # 同一 IP 身份校验连续失败上限
+IDENTITY_LOCK_MINUTES = 30     # 超限后锁定时长（分钟）
 
 # 仅 DEMO_MODE 使用：缓存最近一次"发送"的验证码，供演示页面回显（生产不触发）
 _DEMO_CODES = {}
@@ -279,6 +281,7 @@ class ResetService:
             return False, '服务暂不可用，请联系管理员'
         ok, msg = self.ldap.admin_set_password_by_dn(domain, user_dn, new_password)
         if not ok:
+            current_app.logger.error('AD 改密失败 user_dn=%s: %s', user_dn, msg)
             return False, '重置失败，请联系管理员'
         return True, 'OK'
 
