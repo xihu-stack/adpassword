@@ -5,10 +5,14 @@
 #  用法：
 #    bash deploy_linux.sh              # DEMO 模式：零配置，立即体验
 #    bash deploy_linux.sh prod         # 生产模式（默认 SQLite）
-#    DATABASE_URL=postgresql://u:p@h:5432/db  bash deploy_linux.sh prod   # 生产 + PostgreSQL
+#    DATABASE_URL=postgresql://u:p@h:5432/db  bash deploy_linux.sh prod
+#    SYSTEM_PORT=5001 bash deploy_linux.sh prod   # 换端口
 #
-#  首次启动会【自动建表】，无需手动执行 SQL。
-#  生产模式启动后，用 admin/admin 登录后台配置【域(AD)】与【阿里云短信】即可。
+#  部署后自动后台运行。管理：
+#    查看日志：tail -f backend/logs/app.log
+#    查看进程：cat backend/.app.pid
+#    停止：     kill $(cat backend/.app.pid)
+#    重启：     重新运行本脚本即可（自动停旧起新）
 # ============================================================
 set -e
 export PYTHONUTF8=1
@@ -16,21 +20,44 @@ export PYTHONIOENCODING=utf-8
 cd "$(dirname "$0")/backend"
 PY=.venv/bin/python
 MODE="${1:-demo}"   # demo | prod
+PORT="${SYSTEM_PORT:-5000}"
+HOST="${SYSTEM_HOST:-0.0.0.0}"
+PID_FILE=.app.pid
+LOG_FILE=logs/app.log
 
-# 1) 虚拟环境
+# ---- 子命令 ----
+if [ "$MODE" = "stop" ]; then
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat $PID_FILE)" 2>/dev/null; then
+        kill "$(cat $PID_FILE)" && echo "已停止 (PID $(cat $PID_FILE))"
+        rm -f "$PID_FILE"
+    else
+        echo "服务未在运行"
+    fi
+    exit 0
+fi
+if [ "$MODE" = "status" ]; then
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat $PID_FILE)" 2>/dev/null; then
+        echo "✅ 运行中 (PID $(cat $PID_FILE)) | 端口 $PORT | 日志 $LOG_FILE"
+    else
+        echo "❌ 未运行"
+    fi
+    exit 0
+fi
+
+# ---- 1) 虚拟环境 ----
 if [ ! -f "$PY" ]; then
-    echo "[1/4] 创建虚拟环境..."
+    echo "[1/5] 创建虚拟环境..."
     python3 -m venv .venv
 fi
 
-# 2) 依赖
-echo "[2/4] 安装依赖..."
+# ---- 2) 依赖 ----
+echo "[2/5] 安装依赖..."
 $PY -m pip install --upgrade pip -q
 $PY -m pip install -q -r requirements.txt
 
-# 3) .env（首次运行自动生成，含强随机密钥）
+# ---- 3) .env ----
 if [ ! -f .env ]; then
-    echo "[3/4] 生成 .env（随机密钥）..."
+    echo "[3/5] 生成 .env（随机密钥）..."
     SK=$($PY -c "import secrets;print(secrets.token_hex(32))")
     FK=$($PY -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())")
     if [ "$MODE" = "prod" ]; then
@@ -59,18 +86,53 @@ CORS_ORIGINS=
 EOF
     fi
 else
-    echo "[3/4] 已存在 .env，跳过生成"
+    echo "[3/5] 已存在 .env，跳过生成"
 fi
 
-# 4) 启动（Linux 下 app.py 自动用 gunicorn；首次启动自动建表）
-echo "[4/4] 启动服务..."
-echo "--------------------------------------------"
-if [ "$MODE" = "prod" ]; then
-    echo " 生产模式 | DB: $(grep '^DATABASE_URL=' .env | cut -d= -f2-)"
-    echo " >> 启动后访问 /login (admin/admin)，配置【域】与【短信】，并改 admin 口令"
-else
-    echo " DEMO 模式 | 演示账号：邮箱任意 + 手机号 13800000000（验证码见页面/控制台）"
+# ---- 4) 端口冲突检查 + 停旧实例 ----
+echo "[4/5] 检查端口 $PORT..."
+PORT_BUSY=$($PY -c "import socket;s=socket.socket();print('YES' if s.connect_ex(('127.0.0.1',$PORT))==0 else 'NO');s.close()")
+if [ "$PORT_BUSY" = "YES" ]; then
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat $PID_FILE)" 2>/dev/null; then
+        echo "  端口被旧实例占用 (PID $(cat $PID_FILE))，正在重启..."
+        kill "$(cat $PID_FILE)" 2>/dev/null || true
+        sleep 2
+        rm -f "$PID_FILE"
+    else
+        echo "  ⚠ 端口 $PORT 已被其他程序占用！"
+        echo "  查看占用：ss -tlnp | grep :$PORT"
+        echo "  换端口：SYSTEM_PORT=5001 bash deploy_linux.sh $MODE"
+        exit 1
+    fi
 fi
-echo " 访问：http://127.0.0.1:5000/reset"
-echo "--------------------------------------------"
-exec $PY app.py
+
+# ---- 5) 后台启动 ----
+mkdir -p logs
+echo "[5/5] 后台启动 (gunicorn $HOST:$PORT)..."
+nohup $PY -m gunicorn --bind "$HOST:$PORT" --workers 4 --threads 2 app:app >> "$LOG_FILE" 2>&1 &
+echo $! > "$PID_FILE"
+sleep 3
+
+# ---- 验证 ----
+RECHECK=$($PY -c "import socket;s=socket.socket();print('YES' if s.connect_ex(('127.0.0.1',$PORT))==0 else 'NO');s.close()")
+if [ "$RECHECK" = "YES" ]; then
+    echo ""
+    echo "============================================"
+    echo "  ✅ 启动成功！PID $(cat $PID_FILE)"
+    echo "  重置页：http://服务器IP:$PORT/reset"
+    echo "  管理后台：http://服务器IP:$PORT/login (admin/admin)"
+    if [ "$MODE" = "prod" ]; then
+        echo "  生产模式 → 登录后台配【域】+【短信】"
+    else
+        echo "  DEMO 模式 → 邮箱任意 + 手机 13800000000"
+    fi
+    echo "--------------------------------------------"
+    echo "  查看日志：tail -f $(pwd)/$LOG_FILE"
+    echo "  查看状态：bash deploy_linux.sh status"
+    echo "  停止：     bash deploy_linux.sh stop"
+    echo "  重启：     重新运行本脚本即可"
+    echo "============================================"
+else
+    echo "  ❌ 启动失败！查看日志：tail -f $(pwd)/$LOG_FILE"
+    exit 1
+fi
