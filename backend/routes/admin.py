@@ -626,7 +626,6 @@ def domains_page():
                     document.getElementById('saveBtn').disabled = true;
                 });
             }
-            }
         </script>
     </body>
     </html>
@@ -2159,7 +2158,7 @@ def update_domain(domain_id):
 
 
 
-@admin_bp.route('/api/admin/sms-config', methods=['GET'])
+@admin_bp.route('/api/sms-config', methods=['GET'])
 @login_required
 def get_sms_config():
     """获取短信配置"""
@@ -2187,7 +2186,7 @@ def get_sms_config():
         return jsonify({'success': True, 'data': None})
 
 
-@admin_bp.route('/api/admin/sms-config', methods=['POST'])
+@admin_bp.route('/api/sms-config', methods=['POST'])
 @admin_required
 def save_sms_config():
     """保存短信配置"""
@@ -2237,7 +2236,7 @@ def save_sms_config():
     return jsonify({'success': True, 'message': '短信配置保存成功'})
 
 
-@admin_bp.route('/api/admin/sms-test', methods=['POST'])
+@admin_bp.route('/api/sms-test', methods=['POST'])
 @admin_required
 def send_test_sms():
     """发送测试短信"""
