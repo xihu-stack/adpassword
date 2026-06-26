@@ -24,57 +24,53 @@
                                     ├─ /login        管理员登录
                                     └─ /admin/*      管理后台（admin_required）
                                           │
-                                          ├─ PostgreSQL（用户/域/短信配置/日志/限流）
+                                          ├─ SQLite（默认）/ PostgreSQL（用户/域/短信配置/日志/限流）
                                           ├─ AD/LDAP（查 mail+mobile、改 unicodePwd）
                                           └─ 阿里云短信（验证码）
 [Microsoft Entra Connect]  自动把新 AD 密码同步到 Azure AD（应用不参与）
 ```
 
-**技术栈**：Flask 3 · Flask-SQLAlchemy · ldap3 · bcrypt · cryptography(Fernet) · 阿里云短信 SDK · PostgreSQL · p5.js（背景）
+**技术栈**：Flask 3 · Flask-SQLAlchemy · ldap3 · bcrypt · cryptography(Fernet) · 阿里云短信 SDK · SQLite（默认）/ PostgreSQL · p5.js（背景）
 
-## 🚀 快速部署（一条命令）
+## 🚀 部署（一条命令）
 
-> **首次启动自动建表，无需手动执行 SQL**（迁移 SQL 仅用于升级旧库）。
+> 默认 **SQLite**（无需装/配数据库）、管理员 **admin / admin**，首次启动自动建表。
 
-**DEMO 模式**（零配置，立即体验；不连真实 AD/短信）：
+**生产部署**（Linux）：
 ```bash
-bash deploy_linux.sh          # Linux
-# 或 Windows: 双击 deploy_windows.bat
-```
-
-**生产模式**（默认 SQLite；想用 PostgreSQL 就传入 `DATABASE_URL`）：
-```bash
-# 最简：本地 SQLite
 bash deploy_linux.sh prod
-
-# PostgreSQL（推荐）
-DATABASE_URL=postgresql://user:pwd@host:5432/ad_password_db bash deploy_linux.sh prod
 ```
+脚本自动：建虚拟环境 → 装依赖 → 生成 `.env`（随机密钥、SQLite、`admin/admin`）→ gunicorn 启动（监听 :5000）。
 
-脚本自动完成：建虚拟环境 → 装依赖 → 生成 `.env`（强随机 `SECRET_KEY` + Fernet 密钥）→ 启动（Linux 自动用 gunicorn）。
+**访问**：
+- 重置页：http://服务器IP:5000/reset
+- 管理后台：http://服务器IP:5000/login → **`admin` / `admin`**
 
-启动后：
-- 重置页：http://127.0.0.1:5000/reset
-- 管理后台：http://127.0.0.1:5000/login（`admin` / `admin`）
+**HTTPS（你的场景：前面有 WAF）**：服务器跑 HTTP:5000 即可，WAF 回源到 `服务器:5000` 并挂证书；防火墙把 5000 限制为只允许 WAF 回源 IP。`.env` 保持 `HTTPS_ENABLED=true`。
 
-> **生产模式上线 3 件事**（登录后台后）：① 配置【域】(AD 绑定账号) ② 配置【阿里云短信】 ③ 改 admin 口令。
-> AAD 同步由 Entra Connect 自动完成，云服务新密码约 2-3 分钟生效。
-
-### 可选：systemd + nginx（生产长跑）
-- systemd：改 `systemd/ad-password-manager.service` 里的路径 → `systemctl enable --now ad-password-manager`
-- nginx：参考 `docs/nginx.conf.example` 做 HTTPS 反代到 127.0.0.1:5000
+**登录后台后做 2 件事**：① 配置【域】(AD 绑定账号) ② 配置【阿里云短信】。
 
 <details>
-<summary>手动部署（不用脚本）</summary>
+<summary>可选：自定义 admin 密码 / 用 PostgreSQL / systemd 常驻 / DEMO 体验</summary>
 
 ```bash
-git clone <repo> && cd ad2/backend
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.production.example .env   # 填 SECRET_KEY / SECRET_ENCRYPTION_KEY / DATABASE_URL，DEMO_MODE=false
-.venv/bin/python app.py           # 首次启动自动建表；或 gunicorn -b 127.0.0.1:5000 -w4 app:app
+# 自定义 admin 口令（首次建号用）
+ADMIN_PASSWORD=你的密码 bash deploy_linux.sh prod
+
+# 改用 PostgreSQL
+DATABASE_URL=postgresql://user:pwd@host:5432/ad_password_db bash deploy_linux.sh prod
+
+# 开机常驻（systemd）
+sudo cp systemd/ad-password-manager.service /etc/systemd/system/   # 先改里面的路径
+sudo systemctl enable --now ad-password-manager
+
+# DEMO 体验（零配置，不连真实 AD/短信）
+bash deploy_linux.sh
 ```
-升级旧库时才需：`psql -f database/2026-06-17-reset-migration.sql`
+升级旧库才需：`psql -f database/2026-06-17-reset-migration.sql`（新库自动建表，不用跑）。
 </details>
+
+> AAD 同步由 Entra Connect 自动完成，云服务新密码约 2-3 分钟生效。
 
 ## 🔐 安全设计
 
