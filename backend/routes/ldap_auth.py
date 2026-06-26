@@ -168,7 +168,7 @@ def login():
                 </form>
                 
                 <div class="domain-info">
-                    <p><strong>提示:</strong> 请使用管理员账号登录（默认 admin / admin）</p>
+                    <p><strong>提示:</strong> 请使用管理员账号登录</p>
                 </div>
             </div>
         </div>
