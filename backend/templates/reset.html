@@ -63,10 +63,8 @@
         <div class="step" id="step3">
           <div class="msg" id="msg3"></div>
           <label>短信验证码</label>
-          <div class="row">
-            <input id="code" type="text" maxlength="6" placeholder="6 位验证码">
-            <button style="width:140px" onclick="resendCode(this)">重新发送</button>
-          </div>
+          <input id="code" type="text" maxlength="6" placeholder="6 位验证码" style="margin-bottom:8px">
+          <button type="button" id="resendBtn" onclick="resendCode(this)" style="display:block;margin-left:auto;margin-bottom:14px;padding:6px 18px;font-size:13px;font-weight:400;width:auto;border-radius:6px">60s 后重新获取</button>
           <button onclick="verifyCode()">下一步：验证码校验</button>
           <button class="btn-ghost" onclick="go(1)">返回</button>
         </div>
@@ -113,9 +111,25 @@
     let extra = '';
     if (d.demo_code) { extra = '（演示模式，本次验证码：' + d.demo_code + '）'; }
     show('msg1', d.message + extra, d.success?'ok':'err');
-    if(d.success){ go(3); }
+    if(d.success){ go(3); startCountdown(document.getElementById('resendBtn')); }
   }
-  async function resendCode(btn){ btn.disabled=true; const d=await post('/reset/send-code',{}); show('msg3',d.message,d.success?'ok':'err'); setTimeout(()=>btn.disabled=false,3000); }
+  let _cdTimer = null;
+  function startCountdown(btn){
+    let sec = 60;
+    btn.disabled = true;
+    btn.textContent = sec + 's 后重新获取';
+    if(_cdTimer) clearInterval(_cdTimer);
+    _cdTimer = setInterval(function(){
+      sec--;
+      if(sec<=0){ clearInterval(_cdTimer); btn.disabled=false; btn.textContent='重新发送'; }
+      else { btn.textContent = sec + 's 后重新获取'; }
+    }, 1000);
+  }
+  async function resendCode(btn){
+    const d=await post('/reset/send-code',{});
+    show('msg3',d.message,d.success?'ok':'err');
+    if(d.success){ startCountdown(btn); }
+  }
   async function verifyCode(){
     const code=document.getElementById('code').value.trim();
     const d=await post('/reset/verify-code',{code});
