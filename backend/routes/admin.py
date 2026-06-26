@@ -1,8 +1,5 @@
 from flask import Blueprint, request, jsonify, session, current_app, render_template_string
-try:
-    from services.ldap_service import LdapService
-except ImportError:
-    from services.ldap_service_mock import LdapService
+from services.ldap_service import LdapService
 from utils.decorators import admin_required, login_required
 from datetime import datetime
 
@@ -1677,10 +1674,7 @@ def test_domain_connection_live(domain_id):
             logging.info(f'[测试连接 API] 使用数据库配置：use_ssl={config["use_ssl"]}, ldap_port={config["ldap_port"]}')
         
         # 使用 LDAP 服务测试连接
-        try:
-            from services.ldap_service import LdapService
-        except ImportError:
-            from services.ldap_service_mock import LdapService
+        from services.ldap_service import LdapService
         
         # 测试连接
         result, message = LdapService.test_connection(config)
@@ -1718,10 +1712,7 @@ def test_domain_connection(domain_id):
             }), 404
         
         # 使用 LDAP 服务测试连接
-        try:
-            from services.ldap_service import LdapService
-        except ImportError:
-            from services.ldap_service_mock import LdapService
+        from services.ldap_service import LdapService
         
         # 测试连接（传入字典参数）
         result, message = LdapService.test_connection({
@@ -1999,10 +1990,7 @@ def test_connection():
             }), 400
         
         # 尝试使用 LDAP 服务测试连接
-        try:
-            from services.ldap_service import LdapService
-        except ImportError:
-            from services.ldap_service_mock import LdapService
+        from services.ldap_service import LdapService
         
         # 测试连接（传入字典参数）
         result, message = LdapService.test_connection({
@@ -2228,10 +2216,7 @@ def save_sms_config():
 def send_test_sms():
     """发送测试短信"""
     from models.models import SmsConfig, db
-    try:
-        from services.sms_service import SmsService
-    except ImportError:
-        from services.sms_service_mock import SmsService
+    from services.sms_service import SmsService
     
     data = request.json
     phone = data.get('phone')

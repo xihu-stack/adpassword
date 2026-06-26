@@ -9,38 +9,9 @@ import secrets
 import logging
 
 
-def create_app(testing=False):
+def create_app():
     app = Flask(__name__)
-
-    if testing:
-        app.config['TESTING'] = True
-        app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'testing-secret-key-do-not-use-in-prod')
-        app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('TEST_DATABASE_URL', 'sqlite:///:memory:')
-        app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-        app.config['WTF_CSRF_ENABLED'] = False
-        app.config['CORS_ORIGINS'] = []
-        app.config['PASSWORD_MIN_LENGTH'] = 8
-        app.config['PASSWORD_REQUIRE_UPPERCASE'] = True
-        app.config['PASSWORD_REQUIRE_LOWERCASE'] = True
-        app.config['PASSWORD_REQUIRE_NUMBER'] = True
-        app.config['PASSWORD_REQUIRE_SPECIAL'] = True
-        app.config['DEMO_MODE'] = False
-        app.config['SMS_ASYNC_SEND'] = False  # 测试：同步发送
-        # Keys consumed by Config.init_app (called later in create_app)
-        app.config['SQLALCHEMY_ECHO'] = False
-        app.config['LOG_LEVEL'] = 'WARNING'
-        app.config['LOG_FILE'] = 'logs/test-app.log'
-        app.config['LOG_MAX_BYTES'] = 10485760
-        app.config['LOG_BACKUP_COUNT'] = 5
-        # SQLite in-memory needs StaticPool to share the connection
-        if 'sqlite' in app.config['SQLALCHEMY_DATABASE_URI']:
-            from sqlalchemy.pool import StaticPool
-            app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-                'connect_args': {'check_same_thread': False},
-                'poolclass': StaticPool,
-            }
-    else:
-        app.config.from_object(Config)
+    app.config.from_object(Config)
 
     # 自定义错误处理 - 不暴露敏感信息
     @app.errorhandler(404)
@@ -49,7 +20,7 @@ def create_app(testing=False):
             'success': False,
             'message': '资源不存在'
         }), 404
-    
+
     @app.errorhandler(500)
     def internal_error(error):
         # 记录详细错误日志
@@ -182,7 +153,7 @@ def create_app(testing=False):
             app.logger.info('✓ 已创建默认管理员账号：admin')
 
         # 演示模式：自动种入一个激活域，使公开重置流程可体验（不连真实 AD）
-        if app.config.get('DEMO_MODE') and not testing:
+        if app.config.get('DEMO_MODE'):
             from models.models import Domain
             if Domain.query.filter_by(is_active=True).count() == 0:
                 demo_domain = Domain(

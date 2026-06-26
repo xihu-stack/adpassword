@@ -1,18 +1,9 @@
 from flask import Blueprint, request, redirect, session, url_for, current_app, render_template_string
 from models.models import db, User, Domain
-try:
-    from services.ldap_service import LdapService
-except ImportError:
-    from services.ldap_service_mock import LdapService
+from services.ldap_service import LdapService
 import bcrypt
 
 ldap_auth_bp = Blueprint('ldap_auth', __name__)
-
-
-@ldap_auth_bp.route('/login-test')
-def login_test():
-    """登录测试页面"""
-    return render_template_string(open('templates/login_test.html', 'r', encoding='utf-8').read())
 
 
 @ldap_auth_bp.route('/login')

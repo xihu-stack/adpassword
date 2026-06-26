@@ -116,14 +116,6 @@ ad2/
 └── requirements.txt
 ```
 
-## 🧪 测试
-
-```bash
-cd backend && .venv/bin/python -m pytest tests/ -v      # Linux
-# 或 Windows: .venv\Scripts\python.exe -m pytest tests/ -v
-```
-覆盖：限流（预留/退还/冷却）、身份匹配（保护名单/禁用/规整）、发码校验（锁定/过期/重发失效）、重置（策略/AD 失败）、路由门控（越步/越权/一次性）、防枚举时序、加密、CSRF。
-
 ## 📌 重要约定
 
 - **admin 口令**：公开重置页拦截 admin（保护名单）；忘记 admin 口令用 `backend/init_admin_password.py` 重置。
