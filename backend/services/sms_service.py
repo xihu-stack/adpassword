@@ -1,6 +1,5 @@
 from aliyunsdkcore.client import AcsClient
-from aliyunsdkcore.request import CommonRequest
-from aliyunsdkdysmsapi.request.v20170525 import SendSmsRequest
+from aliyunsdkdysmsapi.request.v20170525.SendSmsRequest import SendSmsRequest
 import json
 from models.models import SmsConfig
 
