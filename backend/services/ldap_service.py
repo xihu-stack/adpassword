@@ -895,7 +895,16 @@ class LdapService:
                     result = conn.modify(user_dn, {'unicodePwd': [(MODIFY_REPLACE, [encoded])]})
                     if result:
                         conn.unbind()
-                        return True, '密码修改成功'
+                        # 验证：用新密码做一次 LDAP 绑定，确认密码确实生效
+                        try:
+                            verify_conn = Connection(server, user=user_dn,
+                                                    password=new_password,
+                                                    authentication=SIMPLE, auto_bind=True,
+                                                    receive_timeout=10)
+                            verify_conn.unbind()
+                            return True, '密码修改成功（已验证）'
+                        except Exception as ve:
+                            return False, f'密码已设置但验证绑定失败（可能 AD 同步延迟）：{str(ve)[:120]}'
                     # Modify rejected (policy/auth) — do not retry other servers.
                     last_err = conn.result.get('message', '密码修改失败')
                     conn.unbind()
