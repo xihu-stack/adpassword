@@ -767,13 +767,19 @@ def sms_page():
                     .then(data => {
                         if (data.success && data.data) {
                             document.getElementById('accessKey').value = data.data.access_key || '';
-                            document.getElementById('accessSecret').value = data.data.access_secret || '';
+                            document.getElementById('accessSecret').value = '';
                             document.getElementById('signName').value = data.data.sign_name || '';
                             document.getElementById('templateCode').value = data.data.template_code || '';
-                            
+
                             // 更新状态徽章
                             updateStatus('accessKeyStatus', data.data.access_key);
-                            updateStatus('accessSecretStatus', data.data.access_secret);
+                            // access_secret 不回传，用 access_secret_configured 判断
+                            if (data.data.access_secret_configured) {
+                                updateStatus('accessSecretStatus', 'configured');
+                                document.getElementById('accessSecret').placeholder = '已配置（如需修改请输入新值）';
+                            } else {
+                                updateStatus('accessSecretStatus', '');
+                            }
                             updateStatus('signNameStatus', data.data.sign_name);
                             updateStatus('templateCodeStatus', data.data.template_code);
                         }
@@ -2287,21 +2293,18 @@ def send_test_sms():
     try:
         # 发送测试短信
         sms = SmsService(config)
-        # 生成随机验证码
         import random
         code = str(random.randint(100000, 999999))
-        
-        # 这里调用实际的短信发送 API
-        # 由于是测试，我们只返回成功消息
-        result = sms.send_sms(phone, {'code': code})
-        
-        if result:
+
+        ok, msg = sms.send_verification_code(phone, code)
+
+        if ok:
             return jsonify({
                 'success': True,
                 'message': f'测试短信已发送到 {phone}，验证码：{code}'
             })
         else:
-            return jsonify({'success': False, 'message': '短信发送失败，请检查配置'})
+            return jsonify({'success': False, 'message': f'发送失败：{msg}'})
             
     except Exception as e:
         return jsonify({'success': False, 'message': f'发送失败：{str(e)}'}), 500
