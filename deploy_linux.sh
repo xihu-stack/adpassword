@@ -89,6 +89,11 @@ else
     echo "[3/5] 已存在 .env，跳过生成"
 fi
 
+# prod 模式：强制 DEMO_MODE=false（防止之前 demo 运行遗留）
+if [ "$MODE" = "prod" ]; then
+    sed -i 's/DEMO_MODE=true/DEMO_MODE=false/' .env 2>/dev/null || true
+fi
+
 # ---- 4) 端口冲突检查 + 停旧实例 ----
 echo "[4/5] 检查端口 $PORT..."
 PORT_BUSY=$($PY -c "import socket;s=socket.socket();print('YES' if s.connect_ex(('127.0.0.1',$PORT))==0 else 'NO');s.close()")
