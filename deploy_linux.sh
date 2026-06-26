@@ -25,6 +25,7 @@ fi
 
 # 2) 依赖
 echo "[2/4] 安装依赖..."
+$PY -m pip install --upgrade pip -q
 $PY -m pip install -q -r requirements.txt
 
 # 3) .env（首次运行自动生成，含强随机密钥）

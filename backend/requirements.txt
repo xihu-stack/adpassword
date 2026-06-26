@@ -1,32 +1,33 @@
 # =============================================
-# AD 密码自助重置系统 - Python 依赖
+# 华深智药 · 密码自助重置系统 - Python 依赖
 # 部署：cd backend && pip install -r requirements.txt
+# 用 >= 最低版本，让 pip 自动选兼容版本
 # =============================================
 
 # 核心框架
-Flask==3.0.0
-Flask-SQLAlchemy==3.1.1
-Flask-Cors==4.0.0
-Flask-WTF==1.2.2            # CSRF 保护
-Werkzeug==3.1.6
+Flask>=3.0.0
+Flask-SQLAlchemy>=3.1.1
+Flask-Cors>=4.0.0
+Flask-WTF>=1.2.0
+Werkzeug>=3.0.0
 
-# 数据库（生产用 PostgreSQL）
-psycopg2-binary==2.9.11
+# 数据库（生产用 PostgreSQL；默认 SQLite 不需要额外驱动）
+psycopg2-binary>=2.9.5
 
 # 安全 / 加密
-bcrypt==5.0.0               # 密码哈希
-cryptography==46.0.5        # Fernet 凭据加密（必需，勿删）
+bcrypt>=4.0.0
+cryptography>=42.0.0
 
 # LDAP（域控连接）
-ldap3==2.9.1
+ldap3>=2.9.1
 
 # 短信（阿里云）
-aliyun-python-sdk-core==2.16.0
-aliyun-python-sdk-dysmsapi==2.1.2
+aliyun-python-sdk-core>=2.14.0
+aliyun-python-sdk-dysmsapi>=2.0.0
 
 # 配置
-python-dotenv==1.2.2
+python-dotenv>=1.0.0
 
 # WSGI 服务器
-gunicorn==25.1.0            # Linux/Unix 生产
-waitress==3.0.0             # Windows
+gunicorn>=21.2.0            # Linux/Unix 生产
+waitress>=3.0.0             # Windows
