@@ -8,12 +8,25 @@ def test_rate_limit_blocks_after_5_per_hour(app, fake_ldap, fake_sms):
     with app.app_context():
         svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
         phone = '13800000000'
-        # Simulate 5 prior sends (increment writes the counts)
+        # 原子预留 5 次额度
         for _ in range(5):
-            svc._increment_rate(phone, 'a@b.com', '1.2.3.4')
-        # 6th request for same phone should be blocked by the hourly cap
-        allowed, reason = svc.check_rate_limits(phone, 'a@b.com', '1.2.3.4')
+            ok, _ = svc._reserve_quota(phone, 'a@b.com', '1.2.3.4')
+            assert ok
+        # 第 6 次应被每小时上限挡住
+        allowed, reason = svc._reserve_quota(phone, 'a@b.com', '1.2.3.4')
         assert not allowed, reason
+
+
+def test_rate_limit_refund_restores_quota(app, fake_ldap, fake_sms):
+    """发送失败退还额度：预留→退还→应能再次预留。"""
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        ok, _ = svc._reserve_quota('13800000000', 'a@b.com', '1.2.3.4')
+        assert ok
+        svc._refund_quota('13800000000', 'a@b.com', '1.2.3.4')
+        # 退还后可再次预留
+        ok, _ = svc._reserve_quota('13800000000', 'a@b.com', '1.2.3.4')
+        assert ok
 
 
 def test_rate_limit_cooldown(app, fake_ldap, fake_sms):
@@ -119,6 +132,26 @@ def test_issue_and_verify_ok(app, fake_ldap, fake_sms):
         assert len(fake_sms.sent) == 1
         code = fake_sms.sent[0][1]
         ok2, _ = svc.verify_sms_code('13800000000', code)
+        assert ok2 is True
+
+
+def test_resend_invalidates_old_code(app, fake_ldap, fake_sms):
+    """重发后旧验证码立即失效（本次修复点）。"""
+    with app.app_context():
+        svc = ResetService(ldap_adapter=fake_ldap, sms_adapter=fake_sms)
+        svc.issue_sms_code('CN=u1,DC=test,DC=com', '13800000000')
+        code1 = fake_sms.sent[0][1]
+        # 把首码 created_at 拨到 2 分钟前，绕过 60s 冷却以便重发
+        SmsVerificationCode.query.filter_by(phone='13800000000').update(
+            {'created_at': datetime.utcnow() - timedelta(minutes=2)})
+        db.session.commit()
+        svc.issue_sms_code('CN=u1,DC=test,DC=com', '13800000000')  # 重发新码
+        # 旧码 code1 应已失效
+        ok, _ = svc.verify_sms_code('13800000000', code1)
+        assert ok is False
+        # 新码 code2 仍可用
+        code2 = fake_sms.sent[-1][1]
+        ok2, _ = svc.verify_sms_code('13800000000', code2)
         assert ok2 is True
 
 

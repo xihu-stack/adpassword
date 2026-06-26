@@ -25,6 +25,7 @@ def create_app(testing=False):
         app.config['PASSWORD_REQUIRE_NUMBER'] = True
         app.config['PASSWORD_REQUIRE_SPECIAL'] = True
         app.config['DEMO_MODE'] = False
+        app.config['SMS_ASYNC_SEND'] = False  # 测试：同步发送
         # Keys consumed by Config.init_app (called later in create_app)
         app.config['SQLALCHEMY_ECHO'] = False
         app.config['LOG_LEVEL'] = 'WARNING'

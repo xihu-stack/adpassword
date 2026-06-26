@@ -475,7 +475,11 @@ class LdapService:
         """验证 AD 用户登录（支持多主机故障转移）"""
         if not LDAP3_AVAILABLE:
             return False, "ldap3 库不可用"
-        
+
+        # 防御性转义（防 LDAP 注入；该方法当前未被公开流程调用）
+        from services.ldap_filter import escape_ldap
+        username = escape_ldap(username)
+
         # 模拟模式
         if LdapService.CONNECTION_MODE == 'mock':
             if password and len(password) >= 6:

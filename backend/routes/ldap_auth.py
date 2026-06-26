@@ -226,7 +226,8 @@ def authenticate():
                     # 认证成功
                     print(f'[本地认证] ✅ admin 账户认证成功')
                     
-                    # 设置会话
+                    # 设置会话（先清空，防会话固定攻击）
+                    session.clear()
                     session['user_id'] = admin_user.id
                     session['username'] = 'admin'
                     session['user_role'] = 'admin'

@@ -64,21 +64,64 @@ class ResetService:
         self.ldap = ldap_adapter or _DefaultLdapAdapter()
         self.sms = sms_adapter or _DefaultSmsAdapter()
 
-    # ---------- 限流 ----------
-    def check_rate_limits(self, phone, email, ip):
+    # ---------- 限流（并发安全） ----------
+    def _check_cooldown(self, phone):
+        """60s 手机号冷却：只读，按 purpose=reset 查最近一条验证码。"""
         now = datetime.utcnow()
-        # 手机号 60s 冷却：查最近一条该手机已【成功发送】的验证码（按 purpose=reset）
         latest = SmsVerificationCode.query.filter_by(phone=phone, purpose='reset').order_by(
             SmsVerificationCode.created_at.desc()).first()
         if latest and latest.created_at and now - latest.created_at < timedelta(seconds=PHONE_COOLDOWN_SECONDS):
             return False, '请稍候再试'
+        return True, None
 
-        limits = [
-            ('phone', phone, HOURLY_LIMIT_PHONE),
-            ('email', email, HOURLY_LIMIT_EMAIL),
-            ('ip', ip, HOURLY_LIMIT_IP),
-        ]
-        for key_type, key_value, cap in limits:
+    def _reserve_quota(self, phone, email, ip):
+        """原子预留发送额度：PG 行锁(with_for_update)下检查+累加，全成功或全回滚。
+        SQLite 测试环境为单线程，with_for_update 被忽略，功能等价。"""
+        now = datetime.utcnow()
+        keys = (('phone', phone, HOURLY_LIMIT_PHONE),
+                ('email', email, HOURLY_LIMIT_EMAIL),
+                ('ip', ip, HOURLY_LIMIT_IP))
+        for key_type, key_value, cap in keys:
+            if not key_value:
+                continue
+            rl = SmsRateLimit.query.filter_by(
+                key_type=key_type, key_value=key_value).with_for_update().first()
+            if rl is None:
+                rl = SmsRateLimit(key_type=key_type, key_value=key_value,
+                                  sent_count=0, window_start=now)
+                db.session.add(rl)
+                db.session.flush()  # 占行（首次写入；并发下唯一约束兜底）
+            if now - rl.window_start > timedelta(hours=1):
+                rl.sent_count = 0
+                rl.window_start = now
+            if rl.sent_count >= cap:
+                db.session.rollback()  # 释放行锁，且不留半预留
+                return False, '请求过于频繁'
+            rl.sent_count += 1
+        db.session.commit()
+        return True, None
+
+    def _refund_quota(self, phone, email, ip):
+        """发送失败时退还额度（与 _reserve_quota 对称）。"""
+        now = datetime.utcnow()
+        for key_type, key_value in (('phone', phone), ('email', email), ('ip', ip)):
+            if not key_value:
+                continue
+            rl = SmsRateLimit.query.filter_by(
+                key_type=key_type, key_value=key_value).with_for_update().first()
+            if rl and rl.sent_count > 0:
+                rl.sent_count -= 1
+        db.session.commit()
+
+    # 兼容旧调用（仅读冷却+额度，不预留）
+    def check_rate_limits(self, phone, email, ip):
+        ok, reason = self._check_cooldown(phone)
+        if not ok:
+            return False, reason
+        now = datetime.utcnow()
+        for key_type, key_value, cap in (('phone', phone, HOURLY_LIMIT_PHONE),
+                                         ('email', email, HOURLY_LIMIT_EMAIL),
+                                         ('ip', ip, HOURLY_LIMIT_IP)):
             if not key_value:
                 continue
             rl = SmsRateLimit.query.filter_by(key_type=key_type, key_value=key_value).first()
@@ -89,23 +132,6 @@ class ResetService:
                 if rl.sent_count >= cap:
                     return False, '请求过于频繁'
         return True, None
-
-    def _increment_rate(self, phone, email, ip):
-        """只在实际发送成功后调用：累加手机/邮箱/IP 三个维度的计数。"""
-        now = datetime.utcnow()
-        for key_type, key_value in (('phone', phone), ('email', email), ('ip', ip)):
-            if not key_value:
-                continue
-            rl = SmsRateLimit.query.filter_by(key_type=key_type, key_value=key_value).first()
-            if not rl:
-                rl = SmsRateLimit(key_type=key_type, key_value=key_value,
-                                  sent_count=0, window_start=now)
-                db.session.add(rl)
-            if now - rl.window_start > timedelta(hours=1):
-                rl.sent_count = 0
-                rl.window_start = now
-            rl.sent_count += 1
-        db.session.commit()
 
     # ---------- 身份匹配 ----------
     def _protected_list(self):
@@ -151,11 +177,17 @@ class ResetService:
 
     # ---------- 发码与校验 ----------
     def issue_sms_code(self, user_dn, phone, email=None, ip=None):
-        """发码。限流在【发送成功】后才计数；发送失败不消耗额度、不触发冷却。"""
-        allowed, reason = self.check_rate_limits(phone, email, ip)
-        if not allowed:
+        """发码：冷却检查 + 原子预留额度 + 作废旧码 + 建码；
+        生产环境【异步】发送短信(响应即返回，抹平匹配/不匹配时序差)；
+        演示模式同步发送(便于回显验证码)。发送失败退还额度、删码、不触发冷却。"""
+        phone = normalize_phone(phone)
+        ok, reason = self._check_cooldown(phone)
+        if not ok:
+            return False, reason
+        ok, reason = self._reserve_quota(phone, email, ip)
+        if not ok:
             return False, reason or '请求过于频繁'
-        # 重发：先作废该手机所有未用旧码（新码生效，旧码即失效）
+        # 作废该手机所有未用旧码
         SmsVerificationCode.query.filter_by(phone=phone, is_used=False, purpose='reset').update(
             {'is_used': True})
         code = '%06d' % secrets.randbelow(1000000)
@@ -165,20 +197,54 @@ class ResetService:
             expires_at=datetime.utcnow() + timedelta(minutes=CODE_TTL_MINUTES))
         db.session.add(rec)
         db.session.commit()
-        ok, msg = self.sms.send_verification_code(phone, code)
-        if not ok:
-            # 发送失败：作废刚生成的码，不计限流，不触发冷却
-            rec.is_used = True
-            db.session.commit()
-            return False, '验证码发送失败，请稍后重试'
-        # 仅发送成功后才累加限流
-        self._increment_rate(phone, email, ip)
+
+        if current_app.config.get('DEMO_MODE') or not current_app.config.get('SMS_ASYNC_SEND', True):
+            # 演示或测试：同步发送（即时，便于页面回显验证码 / 测试断言）
+            ok, msg = self.sms.send_verification_code(phone, code)
+            if not ok:
+                self._refund_quota(phone, email, ip)
+                SmsVerificationCode.query.filter_by(id=rec.id).delete()
+                db.session.commit()
+                return False, '验证码发送失败，请稍后重试'
+            return True, 'OK'
+
+        # 生产：异步发送，立即返回（抹平匹配/不匹配时序差）
+        self._send_async(phone, code, email, ip, rec.id)
         return True, 'OK'
 
+    def _send_async(self, phone, code, email, ip, rec_id):
+        """后台线程发送短信；失败则删码+退还额度（不触发冷却、不消耗额度）。"""
+        import threading
+        app = current_app._get_current_object()
+        sms = self.sms
+
+        def worker():
+            try:
+                with app.app_context():
+                    ok, msg = sms.send_verification_code(phone, code)
+                    if ok:
+                        return  # 额度已预留，码已建，完成
+                    # 失败：删码 + 退还额度（冷却因此不触发）
+                    SmsVerificationCode.query.filter_by(id=rec_id).delete()
+                    self._refund_quota(phone, email, ip)
+                    db.session.commit()
+                    app.logger.warning('短信发送失败(%s): %s', phone, msg)
+            except Exception as e:
+                try:
+                    app.logger.error('异步发码异常: %s', e)
+                except Exception:
+                    pass
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def verify_sms_code(self, phone, code):
+        phone = normalize_phone(phone)
+        # 行锁：并发下串行化验证码消费，避免重复消费/计数错乱
         rec = (SmsVerificationCode.query
                .filter_by(phone=phone, is_used=False, purpose='reset')
-               .order_by(SmsVerificationCode.created_at.desc()).first())
+               .order_by(SmsVerificationCode.created_at.desc())
+               .with_for_update()
+               .first())
         if not rec:
             return False, '请先获取验证码'
         if datetime.utcnow() > rec.expires_at:
