@@ -170,6 +170,10 @@ def dashboard():
                     <div class="menu-icon">📊</div>
                     <div class="menu-title">操作日志</div>
                 </a>
+                <a href="/admin/protected" class="menu-item">
+                    <div class="menu-icon">🛡️</div>
+                    <div class="menu-title">保护名单</div>
+                </a>
                 <a href="/" class="menu-item">
                     <div class="menu-icon">🏠</div>
                     <div class="menu-title">返回首页</div>
@@ -2334,6 +2338,111 @@ def log_operation_api():
             'success': False,
             'message': str(e)
         }), 500
+
+
+@admin_bp.route('/protected')
+@admin_required
+def protected_page():
+    """保护名单管理页面"""
+    username = session.get('username', '管理员')
+    html = '''
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <title>保护名单 - 华深智药</title>
+        <style>
+            * { margin:0; padding:0; box-sizing:border-box; }
+            body { font-family:'Microsoft YaHei',Arial,sans-serif; background:#f5f7fa; }
+            .header { background:linear-gradient(135deg,#15376b 0%,#1f5fa8 100%); color:#fff; padding:20px 40px; display:flex; justify-content:space-between; align-items:center; }
+            .header h1 { font-size:22px; }
+            .logout-btn { background:rgba(255,255,255,.2); color:#fff; border:none; padding:8px 16px; border-radius:4px; text-decoration:none; }
+            .container { max-width:760px; margin:0 auto; padding:30px; }
+            .back-btn { display:inline-block; margin-bottom:20px; padding:8px 20px; background:#fff; color:#15376b; text-decoration:none; border-radius:4px; }
+            .card { background:#fff; border-radius:10px; padding:30px; box-shadow:0 2px 10px rgba(0,0,0,.05); }
+            .card h2 { color:#333; margin-bottom:10px; }
+            .desc { color:#666; font-size:13px; line-height:1.7; margin-bottom:20px; }
+            .add-row { display:flex; gap:10px; margin-bottom:20px; }
+            .add-row input { flex:1; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; }
+            .add-row button { padding:10px 20px; border:none; background:linear-gradient(135deg,#15376b,#1f5fa8); color:#fff; border-radius:6px; cursor:pointer; font-size:14px; }
+            ul { list-style:none; }
+            li { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 14px; background:#f8faff; border:1px solid #e6eef9; border-radius:6px; margin-bottom:8px; font-size:14px; word-break:break-all; }
+            li .del { background:#fef0f0; color:#f56c6c; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px; white-space:nowrap; }
+            .empty { color:#999; text-align:center; padding:24px; }
+            .msg { font-size:13px; padding:10px 12px; border-radius:6px; margin-bottom:16px; display:none; }
+            .msg.ok { background:#f0f9eb; color:#67C23A; display:block; }
+            .msg.err { background:#fef0f0; color:#f56c6c; display:block; }
+            .save-bar { margin-top:20px; text-align:right; }
+            .save { padding:12px 28px; border:none; background:linear-gradient(135deg,#67C23A,#4CAF50); color:#fff; border-radius:6px; cursor:pointer; font-size:15px; font-weight:bold; }
+        </style>
+    </head>
+    <body>
+<script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
+        <div class="header">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="华深智药" style="height:30px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.25));">
+                <h1>🛡️ 保护名单管理</h1>
+            </div>
+            <div>
+                <span style="margin-right:15px;">{{ username }}</span>
+                <a href="/logout" class="logout-btn">退出登录</a>
+            </div>
+        </div>
+        <div class="container">
+            <a href="/admin/dashboard" class="back-btn">← 返回管理后台</a>
+            <div class="card">
+                <h2>禁止自助重置的账号</h2>
+                <p class="desc">名单中的账号（按 <b>DN / sAMAccountName / memberOf 组</b> 匹配，不区分大小写）<b>无法</b>通过公开 /reset 重置密码，必须由 IT 管理员线下处理。默认含 admin / Administrator。建议加入域管理员组 DN、服务账号。</p>
+                <div class="msg" id="msg"></div>
+                <div class="add-row">
+                    <input id="newItem" placeholder="输入账号名、DN 或组 DN（如 CN=Domain Admins,CN=Groups,DC=x,DC=com），回车添加">
+                    <button onclick="addItem()">添加</button>
+                </div>
+                <ul id="list"></ul>
+                <div class="save-bar">
+                    <button class="save" onclick="save()">💾 保存名单</button>
+                </div>
+            </div>
+        </div>
+        <script>
+            let items = [];
+            function show(m, cls){ const e=document.getElementById('msg'); e.textContent=m; e.className='msg '+(cls||''); }
+            function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+            function render(){
+                const ul=document.getElementById('list');
+                if(!items.length){ ul.innerHTML='<div class="empty">名单为空（所有账号都可自助重置，不推荐）</div>'; return; }
+                ul.innerHTML = items.map((it,i)=>'<li><span>'+esc(it)+'</span><button class="del" onclick="delItem('+i+')">删除</button></li>').join('');
+            }
+            function addItem(){
+                const inp=document.getElementById('newItem'); const v=inp.value.trim();
+                if(!v) return;
+                if(items.indexOf(v)>=0){ show('该条目已存在','err'); return; }
+                items.push(v); inp.value=''; render(); show('已添加（需点保存生效）','ok');
+            }
+            function delItem(i){ items.splice(i,1); render(); show('已移除（需点保存生效）','ok'); }
+            async function load(){
+                try{
+                    const d = await (await fetch('/admin/api/reset-protected-accounts')).json();
+                    items = (d&&d.data)? d.data.slice() : [];
+                    render();
+                }catch(e){ show('加载失败：'+e,'err'); }
+            }
+            async function save(){
+                if(!confirm('确认保存？共 '+items.length+' 条')) return;
+                try{
+                    const r = await fetch('/admin/api/reset-protected-accounts',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({accounts:items})});
+                    const d = await r.json();
+                    if(d.success){ items = d.data.slice(); render(); show('已保存（共 '+items.length+' 条）','ok'); }
+                    else { show('保存失败：'+(d.message||''),'err'); }
+                }catch(e){ show('保存失败：'+e,'err'); }
+            }
+            document.getElementById('newItem').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addItem(); }});
+            load();
+        </script>
+    </body>
+    </html>
+    '''
+    return render_template_string(html, username=username)
 
 
 @admin_bp.route('/api/reset-protected-accounts', methods=['GET'])
