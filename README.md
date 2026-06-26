@@ -2,7 +2,7 @@
 
 > 面向远程/办公用户的 **忘记密码自助重置** 系统：用户输入邮箱与手机号，与域控（AD）登记信息校验后通过短信验证码重置密码。AD 密码改完后由 **Microsoft Entra Connect** 自动同步到 Azure AD（本系统不直连 AAD）。
 
-![tech](https://img.shields.io/badge/Python-3.10+-blue) ![tech](https://img.shields.io/badge/Flask-3.0-green) ![tech](https://img.shields.io/badge/PostgreSQL-15-blue) ![tech](https://img.shields.io/badge/ldap3-AD/LDAP-orange)
+![tech](https://img.shields.io/badge/Python-3.10+-blue) ![tech](https://img.shields.io/badge/Flask-3.0-green) ![tech](https://img.shields.io/badge/SQLite-默认-green) ![tech](https://img.shields.io/badge/ldap3-AD/LDAP-orange)
 
 ---
 
@@ -12,23 +12,24 @@
 - **防用户枚举**：匹配/不匹配返回统一文案、静默不发；生产环境短信异步发送抹平时序差
 - **三层限流**（原子行锁）：手机号 60s 冷却 + 5 次/小时、邮箱 5 次/小时、IP 20 次/小时
 - **安全**：凭据 Fernet 加密存储、CSRF 全量保护、LDAP 注入转义、保护名单（默认挡 admin/Administrator）、禁用账号拒绝、验证码 bcrypt 哈希 + 5 次锁定
-- **管理员后台**（精简）：域配置、短信配置、保护名单管理、操作日志
+- **管理员后台**（精简）：域配置、短信配置、操作日志；保护名单经 API 配置（默认含 admin/Administrator）
 - **品牌化 UI**：华深智药 LOGO + 蛋白分子结构（α-螺旋）动态背景（p5.js 本地化，无外部 CDN）
 - **一键部署**：Windows `.bat` / Linux `.sh`，开箱即用的 DEMO 模式
 
 ## 🏗 架构
 
 ```
-[公网用户] ──HTTPS──> [Nginx] ──> [Flask (gunicorn/waitress)]
-                                    ├─ /reset        公开重置向导（未认证）
-                                    ├─ /login        管理员登录
-                                    └─ /admin/*      管理后台（admin_required）
-                                          │
-                                          ├─ SQLite（默认）/ PostgreSQL（用户/域/短信配置/日志/限流）
-                                          ├─ AD/LDAP（查 mail+mobile、改 unicodePwd）
-                                          └─ 阿里云短信（验证码）
+[公网用户] ──HTTPS──> [WAF（证书/TLS）] ──HTTP──> [Flask (gunicorn :5000)]
+                                                    ├─ /reset        公开重置向导（未认证）
+                                                    ├─ /login        管理员登录
+                                                    └─ /admin/*      管理后台（admin_required）
+                                                          │
+                                                          ├─ SQLite（默认）/ PostgreSQL（用户/域/短信配置/日志/限流）
+                                                          ├─ AD/LDAP（查 mail+mobile、改 unicodePwd）
+                                                          └─ 阿里云短信（验证码）
 [Microsoft Entra Connect]  自动把新 AD 密码同步到 Azure AD（应用不参与）
 ```
+> 没有 WAF 也可用 nginx/云 LB 做 TLS 终端；纯内网直连 HTTP 时把 `.env` 的 `HTTPS_ENABLED=false`。
 
 **技术栈**：Flask 3 · Flask-SQLAlchemy · ldap3 · bcrypt · cryptography(Fernet) · 阿里云短信 SDK · SQLite（默认）/ PostgreSQL · p5.js（背景）
 
@@ -103,9 +104,8 @@ ad2/
 │   │   ├── sms_service.py      # 阿里云短信
 │   │   ├── secret_crypto.py    # Fernet 加密
 │   │   └── ldap_filter.py      # LDAP 注入转义
-│   ├── templates/reset.html    # 重定向页（蛋白背景）
-│   ├── static/                 # logo.png、bg.js（p5 蛋白螺旋）、p5.min.js
-│   └── tests/                  # pytest（34 用例）
+│   ├── templates/reset.html    # 重置页（蛋白背景）
+│   └── static/                 # logo.png、bg.js（p5 蛋白螺旋）、p5.min.js
 ├── database/                   # init.sql + 迁移脚本
 ├── systemd/ · nginx/ · docs/ · wendang/
 ├── deploy_windows.bat · deploy_linux.sh
