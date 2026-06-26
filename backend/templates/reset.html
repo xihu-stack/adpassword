@@ -35,6 +35,14 @@
     .msg.ok { background:#f0f9eb; color:#67C23A; display:block; }
     .msg.err { background:#fef0f0; color:#f56c6c; display:block; }
     .hint { font-size:12px; color:#999; margin-top:14px; line-height:1.6; }
+    @keyframes draw-circle { to { stroke-dashoffset:0; } }
+    @keyframes draw-check { to { stroke-dashoffset:0; } }
+    @keyframes fade-up { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes float-up { 0%{opacity:1;transform:translateY(0) rotate(0)} 100%{opacity:0;transform:translateY(-140px) rotate(360deg)} }
+    .success-title { color:#67C23A; margin:18px 0 12px; font-size:24px; animation:fade-up .5s ease .7s both; }
+    .info-ok { background:#f0f9eb; color:#67C23A; padding:14px 16px; border-radius:8px; margin:10px 0; font-size:15px; font-weight:600; border:1px solid #e1f3d8; animation:fade-up .5s ease .9s both; }
+    .info-warn { background:#fff7e6; color:#E6A23C; padding:14px 16px; border-radius:8px; margin:10px 0; font-size:14px; border:1px solid #fdecc8; animation:fade-up .5s ease 1.1s both; }
+    .confetti { position:absolute; font-size:22px; pointer-events:none; animation:float-up 1.8s ease-out forwards; opacity:0; }
   </style>
 </head>
 <body>
@@ -80,12 +88,21 @@
           <p class="hint">重置后此密码直接可用；云服务（邮箱/M365 等）可能需 2-3 分钟生效。</p>
         </div>
 
-        <!-- 步骤 5 成功 -->
-        <div class="step" id="step5">
-          <div style="text-align:center;padding:20px 0">
-            <div style="font-size:54px">✅</div>
-            <h2 style="color:#67C23A;margin:12px 0">密码重置成功</h2>
-            <p style="color:#666;font-size:14px">请使用新密码登录。<br>云服务可能需 2-3 分钟生效。</p>
+        <!-- 步骤 5 成功（动画） -->
+        <div class="step" id="step5" style="position:relative;overflow:hidden">
+          <div style="text-align:center;padding:30px 10px">
+            <svg width="84" height="84" viewBox="0 0 84 84" style="display:block;margin:0 auto">
+              <circle cx="42" cy="42" r="38" fill="none" stroke="#67C23A" stroke-width="4"
+                      stroke-dasharray="239" stroke-dashoffset="239"
+                      style="animation:draw-circle .6s ease forwards"/>
+              <path d="M24 44 L36 56 L60 28" fill="none" stroke="#67C23A" stroke-width="6"
+                    stroke-linecap="round" stroke-linejoin="round"
+                    stroke-dasharray="60" stroke-dashoffset="60"
+                    style="animation:draw-check .4s ease .5s forwards"/>
+            </svg>
+            <h2 class="success-title">恭喜！密码重置成功</h2>
+            <div class="info-ok">✅ 请使用新密码登录系统</div>
+            <div class="info-warn">⏰ 云服务（邮箱 / M365 等）可能需要 2-3 分钟生效</div>
           </div>
         </div>
 
@@ -141,7 +158,22 @@
     if(np!==cp){ show('msg4','两次输入的新密码不一致','err'); return; }
     const d=await post('/reset/do-reset',{new_password:np,confirm_password:cp});
     show('msg4',d.message,d.success?'ok':'err');
-    if(d.success){ go(5); }
+    if(d.success){ go(5); celebrate(); }
+  }
+  function celebrate(){
+    const emojis=['🎉','🎊','✨','🎈','⭐'];
+    const box=document.getElementById('step5');
+    for(let i=0;i<14;i++){
+      const e=document.createElement('div');
+      e.className='confetti';
+      e.textContent=emojis[i%emojis.length];
+      e.style.left=(10+Math.random()*80)+'%';
+      e.style.top='20px';
+      e.style.animationDelay=(Math.random()*0.6)+'s';
+      box.appendChild(e);
+      setTimeout(()=>e.remove(),2800);
+    }
+  }
   }
 </script>
 </body>
