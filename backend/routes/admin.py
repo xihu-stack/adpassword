@@ -357,12 +357,13 @@ def domains_page():
                     <form method="POST" action="/admin/domains" style="max-width: 600px;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">域名称</label>
-                            <input type="text" name="name" placeholder="例如：example.com" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">域名（填这个就行，下面自动生成）</label>
+                            <input type="text" name="name" id="domainName" oninput="autoFillDN()" placeholder="例如：helixon.com" required style="width: 100%; padding: 10px; border: 2px solid #409EFF; border-radius: 4px;">
+                            <small style="color: #999; display: block; margin-top: 5px;">💡 填域名后，基础 DN 和管理员 DN 会自动生成，可手动修改</small>
                         </div>
                         <div style="margin-bottom: 15px;">
                             <label style="display: block; margin-bottom: 5px; font-weight: bold;">LDAP 主机</label>
-                            <input type="text" name="ldap_host" placeholder="例如：192.168.1.100" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                            <input type="text" name="ldap_host" placeholder="例如：192.168.1.100 或 dc.helixon.com" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
                         </div>
                         <div style="margin-bottom: 15px;">
                             <label style="display: block; margin-bottom: 5px; font-weight: bold;">LDAP 端口</label>
@@ -376,12 +377,17 @@ def domains_page():
                             </div>
                         </div>
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">基础 DN</label>
-                            <input type="text" name="base_dn" placeholder="例如：DC=example,DC=com" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">管理员账号名（用于自动生成 DN）</label>
+                            <input type="text" id="adminCN" value="Administrator" oninput="autoFillDN()" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                            <small style="color: #999;">默认 Administrator，可改成服务账号名</small>
                         </div>
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">管理员 DN</label>
-                            <input type="text" name="admin_dn" placeholder="例如：CN=Administrator,CN=Users,DC=example,DC=com" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">基础 DN（自动生成）</label>
+                            <input type="text" name="base_dn" id="base_dn" placeholder="填域名后自动生成" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">管理员 DN（自动生成）</label>
+                            <input type="text" name="admin_dn" id="admin_dn" placeholder="填域名后自动生成" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">
                         </div>
                         <div style="margin-bottom: 15px;">
                             <label style="display: block; margin-bottom: 5px; font-weight: bold;">管理员密码</label>
@@ -404,6 +410,19 @@ def domains_page():
                 loadDomainList();
             });
             
+            // 填域名后自动生成 Base DN 和 Admin DN
+            function autoFillDN() {
+                var name = document.getElementById('domainName').value.trim();
+                var cn = document.getElementById('adminCN').value.trim() || 'Administrator';
+                var baseInput = document.getElementById('base_dn');
+                var adminInput = document.getElementById('admin_dn');
+                if (!name) { baseInput.value=''; adminInput.value=''; return; }
+                var parts = name.split('.').filter(function(p){return p.trim();});
+                var baseDN = parts.map(function(p){return 'DC=' + p.trim();}).join(',');
+                baseInput.value = baseDN;
+                adminInput.value = 'CN=' + cn + ',CN=Users,' + baseDN;
+            }
+
             function showAddForm() {
                 document.querySelector('.empty-state').style.display = 'none';
                 document.getElementById('addForm').style.display = 'block';
