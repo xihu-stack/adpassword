@@ -9,7 +9,7 @@ class SmsService:
     def __init__(self, sms_config: SmsConfig):
         self.client = AcsClient(
             sms_config.access_key,
-            sms_config.access_secret,
+            sms_config.access_secret_plain,
             "cn-hangzhou"
         )
         self.sign_name = sms_config.sign_name

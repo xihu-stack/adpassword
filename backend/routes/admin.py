@@ -2251,12 +2251,17 @@ def save_sms_config():
         db.session.add(config)
         action = 'sms_config_create'
         details = f'创建短信配置：签名={sign_name}, 模板={template_code}'
-    
-    db.session.commit()
-    
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'短信配置保存失败: {str(e)}')
+        return jsonify({'success': False, 'message': f'保存失败: {str(e)}'}), 500
+
     # 记录操作日志
     log_operation(action, details=details)
-    
+
     return jsonify({'success': True, 'message': '短信配置保存成功'})
 
 
@@ -2281,7 +2286,7 @@ def send_test_sms():
     
     try:
         # 发送测试短信
-        sms = SmsService()
+        sms = SmsService(config)
         # 生成随机验证码
         import random
         code = str(random.randint(100000, 999999))
