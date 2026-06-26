@@ -234,6 +234,11 @@ def authenticate():
                     return redirect(url_for('admin.dashboard'))
                 else:
                     # 密码错误
+                    try:
+                        from utils.logger import log_operation
+                        log_operation('login_failed', target_user='admin', details='管理员登录密码错误')
+                    except Exception:
+                        pass
                     return redirect(url_for('ldap_auth.login', error='管理员账户或密码错误', username=username))
             except Exception as e:
                 print(f'[本地认证] ❌ 密码验证异常：{str(e)}')

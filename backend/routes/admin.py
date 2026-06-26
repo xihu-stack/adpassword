@@ -915,12 +915,16 @@ def logs_page():
                 <div class="filter-form">
                     <select id="filterAction" onchange="loadLogs(1)">
                         <option value="">全部操作类型</option>
-                        <option value="login">登录</option>
-                        <option value="password_reset">密码重置</option>
-                        <option value="user_sync">用户同步</option>
-                        <option value="user_create">用户创建</option>
-                        <option value="user_update">用户更新</option>
-                        <option value="user_delete">用户删除</option>
+                        <option value="login">登录成功</option>
+                        <option value="login_failed">登录失败</option>
+                        <option value="password_reset">重置成功</option>
+                        <option value="password_reset_failed">重置失败</option>
+                        <option value="reset_identity_ok">身份校验通过</option>
+                        <option value="reset_identity_mismatch">身份校验未通过</option>
+                        <option value="reset_code_failed">验证码错误</option>
+                        <option value="sms_send_failed">短信发送失败</option>
+                        <option value="admin_password_change">管理员改密</option>
+                        <option value="protected_list_update">保护名单更新</option>
                         <option value="domain_create">域创建</option>
                         <option value="domain_update">域更新</option>
                         <option value="domain_delete">域删除</option>
@@ -1047,7 +1051,14 @@ def logs_page():
             function getBadgeClass(action) {
                 const classes = {
                     'login': 'badge-login',
+                    'login_failed': 'badge-danger',
                     'password_reset': 'badge-password',
+                    'password_reset_failed': 'badge-danger',
+                    'reset_identity_ok': 'badge-login',
+                    'reset_identity_mismatch': 'badge-danger',
+                    'reset_code_failed': 'badge-danger',
+                    'sms_send_failed': 'badge-danger',
+                    'admin_password_change': 'badge-password',
                     'user_sync': 'badge-system',
                     'user_create': 'badge-user',
                     'user_update': 'badge-user',
@@ -1060,12 +1071,19 @@ def logs_page():
                 };
                 return classes[action] || 'badge-system';
             }
-            
+
             // 格式化操作类型
             function formatAction(action) {
                 const names = {
-                    'login': '登录',
-                    'password_reset': '密码重置',
+                    'login': '登录成功',
+                    'login_failed': '登录失败',
+                    'password_reset': '重置成功',
+                    'password_reset_failed': '重置失败',
+                    'reset_identity_ok': '身份校验通过',
+                    'reset_identity_mismatch': '身份校验未通过',
+                    'reset_code_failed': '验证码错误',
+                    'sms_send_failed': '短信发送失败',
+                    'admin_password_change': '管理员改密',
                     'user_sync': '用户同步',
                     'user_create': '用户创建',
                     'user_update': '用户更新',

@@ -31,6 +31,15 @@ def _fail(message, step=1):
     return jsonify({'success': False, 'message': message, 'step': step})
 
 
+def _audit(action, target_user=None, details=None):
+    """审计日志（失败/成功均记），失败不影响主流程。IP 由 log_operation 自动取。"""
+    try:
+        from utils.logger import log_operation
+        log_operation(action, target_user=target_user, details=details)
+    except Exception:
+        pass
+
+
 @reset_bp.route('/reset')
 def reset_page():
     return render_template('reset.html')
@@ -58,13 +67,17 @@ def verify_identity():
                                    email=session.get('reset_email'), ip=request.remote_addr)
         if not ok:
             # 发码失败：保留 session 以便重发，返回统一文案
+            _audit('sms_send_failed', target_user=session.get('reset_email'), details='验证码发送失败')
             return _ok('若信息匹配，验证码已发送至您预留的手机', 3)
+        _audit('reset_identity_ok', target_user=session.get('reset_email'), details='身份校验通过，已发码')
         # DEMO_MODE：把验证码回显到响应，方便演示（生产模式下不存在该字段）
         demo_code = None
         if current_app.config.get('DEMO_MODE'):
             from services.reset_service import _DEMO_CODES
             demo_code = _DEMO_CODES.get(session.get('reset_phone'))
         return _ok('若信息匹配，验证码已发送至您预留的手机', 3, demo_code=demo_code)
+    # 不匹配：只记 IP（不记邮箱，防日志变枚举面）
+    _audit('reset_identity_mismatch', details='邮箱+手机校验未通过')
     return _ok('若信息匹配，验证码已发送至您预留的手机', 3)
 
 
@@ -93,6 +106,7 @@ def verify_code():
     svc = ResetService()
     ok, msg = svc.verify_sms_code(session.get('reset_phone'), code)
     if not ok:
+        _audit('reset_code_failed', target_user=session.get('reset_email'), details=msg)
         return _fail(msg, 3), 400
     session['reset_authorized'] = True
     return _ok('验证通过', 4)
@@ -112,6 +126,7 @@ def do_reset():
     svc = ResetService()
     ok, msg = svc.perform_reset(session['reset_user_dn'], new_password)
     if not ok:
+        _audit('password_reset_failed', target_user=session.get('reset_email'), details=msg or '重置失败')
         return _fail(msg or '重置失败，请联系管理员', 4), 400
 
     # 审计 + 通知短信（失败不影响主流程）
