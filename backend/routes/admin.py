@@ -174,6 +174,10 @@ def dashboard():
                     <div class="menu-icon">🛡️</div>
                     <div class="menu-title">保护名单</div>
                 </a>
+                <a href="/admin/change-password" class="menu-item">
+                    <div class="menu-icon">🔑</div>
+                    <div class="menu-title">修改密码</div>
+                </a>
                 <a href="/" class="menu-item">
                     <div class="menu-icon">🏠</div>
                     <div class="menu-title">返回首页</div>
@@ -2338,6 +2342,105 @@ def log_operation_api():
             'success': False,
             'message': str(e)
         }), 500
+
+
+@admin_bp.route('/change-password', methods=['GET', 'POST'])
+@admin_required
+def change_password_page():
+    """管理员在后台修改自己的登录密码（无需脚本）。"""
+    from models.models import User, db
+    from services.reset_service import validate_password
+    from utils.logger import log_operation
+    import bcrypt as _bcrypt
+
+    msg = None
+    msg_cls = None
+    if request.method == 'POST':
+        current = request.form.get('current_password', '')
+        new = request.form.get('new_password', '')
+        confirm = request.form.get('confirm_password', '')
+        admin = User.query.get(session.get('user_id'))
+        if not admin or not admin.password_hash:
+            msg, msg_cls = '账号异常，请联系系统管理员', 'err'
+        elif not _bcrypt.checkpw(current.encode('utf-8'), admin.password_hash.encode('utf-8')):
+            msg, msg_cls = '当前密码错误', 'err'
+        elif new != confirm:
+            msg, msg_cls = '两次输入的新密码不一致', 'err'
+        elif not current.strip() or not new.strip():
+            msg, msg_cls = '密码不能为空', 'err'
+        else:
+            ok, why = validate_password(new, current_app.config)
+            if not ok:
+                msg, msg_cls = why, 'err'
+            else:
+                admin.password_hash = _bcrypt.hashpw(new.encode('utf-8'), _bcrypt.gensalt()).decode('utf-8')
+                db.session.commit()
+                log_operation('admin_password_change', target_user=admin.username,
+                              details='管理员在后台修改了自己的登录口令')
+                msg, msg_cls = '密码修改成功，下次登录请使用新密码', 'ok'
+
+    username = session.get('username', '管理员')
+    html = '''
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <title>修改密码 - 华深智药</title>
+        <style>
+            * { margin:0; padding:0; box-sizing:border-box; }
+            body { font-family:'Microsoft YaHei',Arial,sans-serif; background:#f5f7fa; }
+            .header { background:linear-gradient(135deg,#15376b 0%,#1f5fa8 100%); color:#fff; padding:20px 40px; display:flex; justify-content:space-between; align-items:center; }
+            .header h1 { font-size:22px; }
+            .logout-btn { background:rgba(255,255,255,.2); color:#fff; border:none; padding:8px 16px; border-radius:4px; text-decoration:none; }
+            .container { max-width:480px; margin:0 auto; padding:30px; }
+            .back-btn { display:inline-block; margin-bottom:20px; padding:8px 20px; background:#fff; color:#15376b; text-decoration:none; border-radius:4px; }
+            .card { background:#fff; border-radius:10px; padding:30px; box-shadow:0 2px 10px rgba(0,0,0,.05); }
+            .card h2 { color:#333; margin-bottom:8px; }
+            .sub { color:#999; font-size:12px; margin-bottom:20px; line-height:1.6; }
+            label { display:block; font-size:13px; color:#333; margin:14px 0 6px; font-weight:600; }
+            input { width:100%; padding:11px 13px; border:2px solid #e0e0e0; border-radius:8px; font-size:14px; }
+            input:focus { outline:none; border-color:#1f5fa8; }
+            button { width:100%; margin-top:20px; padding:13px; border:none; border-radius:8px; font-size:15px; font-weight:700; color:#fff; background:linear-gradient(135deg,#15376b,#1f5fa8); cursor:pointer; }
+            .msg { font-size:13px; padding:11px 13px; border-radius:6px; margin-bottom:16px; }
+            .msg.ok { background:#f0f9eb; color:#67C23A; }
+            .msg.err { background:#fef0f0; color:#f56c6c; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="华深智药" style="height:30px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.25));">
+                <h1>🔑 修改登录密码</h1>
+            </div>
+            <div>
+                <span style="margin-right:15px;">{{ username }}</span>
+                <a href="/logout" class="logout-btn">退出登录</a>
+            </div>
+        </div>
+        <div class="container">
+            <a href="/admin/dashboard" class="back-btn">← 返回管理后台</a>
+            <div class="card">
+                <h2>修改管理员登录密码</h2>
+                <p class="sub">需先验证当前密码。新密码要求：至少 8 位，含大小写字母、数字和特殊字符。</p>
+                {% if msg %}
+                <div class="msg {{ msg_cls }}">{{ msg }}</div>
+                {% endif %}
+                <form method="POST" action="/admin/change-password">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label>当前密码</label>
+                    <input type="password" name="current_password" required autocomplete="current-password">
+                    <label>新密码</label>
+                    <input type="password" name="new_password" required autocomplete="new-password" placeholder="至少 8 位，含大小写字母、数字、特殊字符">
+                    <label>确认新密码</label>
+                    <input type="password" name="confirm_password" required autocomplete="new-password">
+                    <button type="submit">确认修改</button>
+                </form>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+    return render_template_string(html, username=username, msg=msg, msg_cls=msg_cls)
 
 
 @admin_bp.route('/protected')
