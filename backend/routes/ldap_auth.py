@@ -215,14 +215,10 @@ def authenticate():
         admin_user = User.query.filter_by(username='admin').first()
         
         if admin_user:
-            # 检查 password_hash 是否存在，如果不存在或为 None，初始化为 'admin'
+            # 安全：password_hash 缺失视为账号损坏，绝不静默重置为默认口令
             if not admin_user.password_hash:
-                # 首次使用，设置默认密码为 admin (bcrypt 加密)
-                import bcrypt
-                admin_user.password_hash = bcrypt.hashpw('admin'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                db.session.commit()
-                print(f'[本地认证] ✅ 已为 admin 账户设置默认密码 (bcrypt 加密)')
-            
+                return redirect(url_for('ldap_auth.login', error='管理员账号异常，请联系系统管理员用 init_admin_password.py 重置', username=username))
+
             # 验证密码 (使用 bcrypt)
             import bcrypt
             try:

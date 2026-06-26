@@ -54,7 +54,8 @@ def verify_identity():
         session['reset_email'] = info.get('mail', email)
         session['reset_started_at'] = datetime.utcnow().isoformat()
         session.pop('reset_authorized', None)
-        ok, _ = svc.issue_sms_code(info['user_dn'], info.get('mobile', phone))
+        ok, _ = svc.issue_sms_code(info['user_dn'], info.get('mobile', phone),
+                                   email=session.get('reset_email'), ip=request.remote_addr)
         if not ok:
             # 发码失败：保留 session 以便重发，返回统一文案
             return _ok('若信息匹配，验证码已发送至您预留的手机', 3)
@@ -73,7 +74,8 @@ def send_code():
         _clear_reset()
         return _fail('会话已过期，请重新开始', 1), 400
     svc = ResetService()
-    ok, msg = svc.issue_sms_code(session['reset_user_dn'], session.get('reset_phone'))
+    ok, msg = svc.issue_sms_code(session['reset_user_dn'], session.get('reset_phone'),
+                                 email=session.get('reset_email'), ip=request.remote_addr)
     if not ok:
         return _fail(msg or '请稍候再试', 3), 429
     return _ok('验证码已重新发送', 3)

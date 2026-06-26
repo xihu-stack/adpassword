@@ -67,8 +67,8 @@ class ResetService:
     # ---------- 限流 ----------
     def check_rate_limits(self, phone, email, ip):
         now = datetime.utcnow()
-        # 手机号 60s 冷却：查最近一条该手机的验证码
-        latest = SmsVerificationCode.query.filter_by(phone=phone).order_by(
+        # 手机号 60s 冷却：查最近一条该手机已【成功发送】的验证码（按 purpose=reset）
+        latest = SmsVerificationCode.query.filter_by(phone=phone, purpose='reset').order_by(
             SmsVerificationCode.created_at.desc()).first()
         if latest and latest.created_at and now - latest.created_at < timedelta(seconds=PHONE_COOLDOWN_SECONDS):
             return False, '请稍候再试'
@@ -91,6 +91,7 @@ class ResetService:
         return True, None
 
     def _increment_rate(self, phone, email, ip):
+        """只在实际发送成功后调用：累加手机/邮箱/IP 三个维度的计数。"""
         now = datetime.utcnow()
         for key_type, key_value in (('phone', phone), ('email', email), ('ip', ip)):
             if not key_value:
@@ -124,7 +125,7 @@ class ResetService:
         if not email or not phone:
             return False, None
 
-        domain = Domain.query.filter_by(is_active=True).first()
+        domain = Domain.query.filter_by(is_active=True).order_by(Domain.id).first()
         if not domain:
             return False, None
 
@@ -149,10 +150,14 @@ class ResetService:
         return True, info
 
     # ---------- 发码与校验 ----------
-    def issue_sms_code(self, user_dn, phone):
-        allowed, reason = self.check_rate_limits(phone, None, None)
+    def issue_sms_code(self, user_dn, phone, email=None, ip=None):
+        """发码。限流在【发送成功】后才计数；发送失败不消耗额度、不触发冷却。"""
+        allowed, reason = self.check_rate_limits(phone, email, ip)
         if not allowed:
             return False, reason or '请求过于频繁'
+        # 重发：先作废该手机所有未用旧码（新码生效，旧码即失效）
+        SmsVerificationCode.query.filter_by(phone=phone, is_used=False, purpose='reset').update(
+            {'is_used': True})
         code = '%06d' % secrets.randbelow(1000000)
         hashed = bcrypt.hashpw(code.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         rec = SmsVerificationCode(
@@ -160,10 +165,14 @@ class ResetService:
             expires_at=datetime.utcnow() + timedelta(minutes=CODE_TTL_MINUTES))
         db.session.add(rec)
         db.session.commit()
-        self._increment_rate(phone, None, None)
         ok, msg = self.sms.send_verification_code(phone, code)
         if not ok:
+            # 发送失败：作废刚生成的码，不计限流，不触发冷却
+            rec.is_used = True
+            db.session.commit()
             return False, '验证码发送失败，请稍后重试'
+        # 仅发送成功后才累加限流
+        self._increment_rate(phone, email, ip)
         return True, 'OK'
 
     def verify_sms_code(self, phone, code):
@@ -199,7 +208,7 @@ class ResetService:
         ok, msg = validate_password(new_password, cfg)
         if not ok:
             return False, msg
-        domain = Domain.query.filter_by(is_active=True).first()
+        domain = Domain.query.filter_by(is_active=True).order_by(Domain.id).first()
         if not domain:
             return False, '服务暂不可用，请联系管理员'
         ok, msg = self.ldap.admin_set_password_by_dn(domain, user_dn, new_password)

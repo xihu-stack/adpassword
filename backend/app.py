@@ -123,7 +123,12 @@ def create_app(testing=False):
          origins=app.config['CORS_ORIGINS'],
          supports_credentials=app.config.get('CORS_SUPPORTS_CREDENTIALS', True),
          expose_headers=app.config.get('CORS_EXPOSE_HEADERS', []))
-    
+
+    # 反向代理（nginx/gunicorn）后取真实客户端 IP 用于限流。
+    # 仅信任 1 层代理设置的 X-Forwarded-For；若多层代理请调大 x_for。
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
     # 注册蓝图
     from routes.ldap_auth import ldap_auth_bp
     from routes.admin import admin_bp
@@ -182,8 +187,9 @@ def create_app(testing=False):
                 demo_domain = Domain(
                     name='演示域 (DEMO)', ldap_hosts='demo-dc', ldap_port=389,
                     ldaps_port=636, base_dn='DC=demo,DC=com',
-                    admin_dn='CN=Admin,DC=demo,DC=com', admin_password='demo',
+                    admin_dn='CN=Admin,DC=demo,DC=com',
                     use_ssl=False, is_active=True)
+                demo_domain.set_admin_password('demo')  # 加密存储（即使是演示值）
                 db.session.add(demo_domain)
                 db.session.commit()
                 app.logger.info('✓ [DEMO_MODE] 已种入演示域配置')

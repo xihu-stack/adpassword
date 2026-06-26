@@ -15,8 +15,6 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255),
     phone VARCHAR(20),
     role VARCHAR(20) DEFAULT 'user',
-    mfa_secret VARCHAR(100),
-    mfa_enabled BOOLEAN DEFAULT FALSE,
     domain_id INTEGER,
     is_active BOOLEAN DEFAULT TRUE,
     ad_dn VARCHAR(255),
@@ -69,19 +67,47 @@ CREATE TABLE IF NOT EXISTS admin_logs (
 
 CREATE INDEX idx_admin_logs_created_at ON admin_logs(created_at);
 
--- 短信验证码表
+-- 短信验证码表（code 存 bcrypt 哈希，需 VARCHAR(255)）
 CREATE TABLE IF NOT EXISTS sms_verification_codes (
     id SERIAL PRIMARY KEY,
     phone VARCHAR(20) NOT NULL,
-    code VARCHAR(10) NOT NULL,
+    code VARCHAR(255) NOT NULL,
     user_id INTEGER REFERENCES users(id),
     is_used BOOLEAN DEFAULT FALSE,
     expires_at TIMESTAMP NOT NULL,
+    fail_count INTEGER DEFAULT 0,
+    purpose VARCHAR(30) DEFAULT 'reset',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_sms_verification_phone ON sms_verification_codes(phone);
 CREATE INDEX idx_sms_verification_used ON sms_verification_codes(is_used);
+
+-- 短信发送限流表
+CREATE TABLE IF NOT EXISTS sms_rate_limits (
+    id SERIAL PRIMARY KEY,
+    key_type VARCHAR(20) NOT NULL,        -- phone|email|ip
+    key_value VARCHAR(200) NOT NULL,
+    sent_count INTEGER DEFAULT 0,
+    window_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_sms_rate_key UNIQUE (key_type, key_value)
+);
+
+-- 系统设置表（保护名单等）
+CREATE TABLE IF NOT EXISTS system_settings (
+    id SERIAL PRIMARY KEY,
+    setting_key VARCHAR(100) UNIQUE NOT NULL,
+    setting_value TEXT,
+    setting_type VARCHAR(20) DEFAULT 'string',
+    description VARCHAR(500),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_system_settings_key ON system_settings(setting_key);
+
+-- 保护名单默认（admin / Administrator）
+INSERT INTO system_settings (setting_key, setting_value, setting_type, description)
+VALUES ('reset_protected_accounts', '["admin", "Administrator"]', 'json', '禁止自助重置的账号')
+ON CONFLICT (setting_key) DO NOTHING;
 
 -- 插入默认管理员账号（密码：admin）
 -- 注意：实际密码会在应用启动时使用 bcrypt 加密

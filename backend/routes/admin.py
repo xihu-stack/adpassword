@@ -2162,7 +2162,8 @@ def get_sms_config():
             'success': True,
             'data': {
                 'access_key': config.access_key,
-                'access_secret': config.access_secret,
+                'access_secret': '',  # 永不回传密钥到前端；用 access_secret_configured 表示是否已配置
+                'access_secret_configured': bool(config.access_secret_plain),
                 'sign_name': config.sign_name,
                 'template_code': config.template_code,
                 'is_active': config.is_active
@@ -2195,7 +2196,7 @@ def save_sms_config():
     if config:
         # 更新现有配置
         config.access_key = access_key
-        config.access_secret = access_secret
+        config.set_access_secret(access_secret)  # Fernet 加密存储
         config.sign_name = sign_name
         config.template_code = template_code
         config.is_active = True
@@ -2205,11 +2206,11 @@ def save_sms_config():
         # 创建新配置
         config = SmsConfig(
             access_key=access_key,
-            access_secret=access_secret,
             sign_name=sign_name,
             template_code=template_code,
             is_active=True
         )
+        config.set_access_secret(access_secret)  # Fernet 加密存储
         db.session.add(config)
         action = 'sms_config_create'
         details = f'创建短信配置：签名={sign_name}, 模板={template_code}'
@@ -2363,7 +2364,7 @@ def get_protected_accounts():
         except Exception:
             items = []
     if not items:
-        items = ['admin']
+        items = ['admin', 'Administrator']
     return jsonify({'success': True, 'data': items})
 
 
