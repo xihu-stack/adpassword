@@ -149,8 +149,12 @@ def create_app():
                 role='admin'
             )
             db.session.add(admin)
-            db.session.commit()
-            app.logger.info('✓ 已创建默认管理员账号：admin')
+            try:
+                db.session.commit()
+                app.logger.info('✓ 已创建默认管理员账号：admin')
+            except Exception:
+                db.session.rollback()
+                app.logger.info('管理员账号已存在（其他 worker 已创建）')
 
         # 演示模式：自动种入一个激活域，使公开重置流程可体验（不连真实 AD）
         if app.config.get('DEMO_MODE'):

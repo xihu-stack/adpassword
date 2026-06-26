@@ -16,6 +16,9 @@ class Config:
         raise ValueError("⚠️  生产环境必须设置 DATABASE_URL 环境变量！")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = False  # 生产环境不打印 SQL
+    # SQLite 并发：加长锁等待超时，防止多 worker 同时写入报 "database is locked"
+    if 'sqlite' in SQLALCHEMY_DATABASE_URI:
+        SQLALCHEMY_ENGINE_OPTIONS = {'connect_args': {'timeout': 30}}
     
     # CAS 配置（已禁用）
     # CAS_SERVER_LOGIN_URL = os.getenv('CAS_SERVER_LOGIN_URL', 'https://cas.example.com/login')
