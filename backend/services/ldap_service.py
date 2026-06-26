@@ -932,3 +932,42 @@ class LdapService:
             return False, last_err
         except Exception as e:
             return False, f'密码修改失败：{str(e)}'
+
+    @staticmethod
+    def verify_user_bind(domain, user_dn, password):
+        """用员工 DN + 密码做 LDAP 绑定，验证账号密码是否正确。返回 (ok, message)。"""
+        if not LDAP3_AVAILABLE:
+            return False, 'ldap3 库不可用'
+        try:
+            servers = LdapService.get_ldap_servers({
+                'ldap_hosts': domain.ldap_hosts or domain.ldap_host,
+                'ldap_host': domain.ldap_host,
+                'ldap_port': domain.ldap_port,
+                'ldaps_port': domain.ldaps_port,
+                'use_ssl': domain.use_ssl,
+                'base_dn': domain.base_dn,
+            })
+            last_err = '连接失败'
+            for protocol, host, port in servers:
+                server_url = f"{protocol}://{host}:{port}"
+                tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
+                                  ciphers='ALL:@SECLEVEL=0')
+                server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10)
+                try:
+                    conn = Connection(server, user=user_dn, password=password,
+                                      authentication=SIMPLE, auto_bind=False)
+                    conn.open()
+                    if protocol == 'ldap':
+                        conn.start_tls()
+                    conn.bind()
+                    if conn.bound:
+                        conn.unbind()
+                        return True, '验证成功'
+                    conn.unbind()
+                    return False, '账号或密码错误'
+                except Exception as e:
+                    last_err = str(e)[:120]
+                    continue
+            return False, f'连接失败：{last_err}'
+        except Exception as e:
+            return False, f'验证失败：{str(e)}'

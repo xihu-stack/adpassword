@@ -401,9 +401,20 @@ def domains_page():
                         <div id="testResult" style="margin-top: 15px; padding: 10px; border-radius: 4px; display: none;"></div>
                     </form>
                 </div>
+
+                <div class="card" style="margin-top:20px">
+                    <h3 style="margin-bottom:8px">🔍 员工域账号验证</h3>
+                    <p style="color:#666;font-size:13px;margin-bottom:15px">输入员工邮箱和密码，验证域控连接和账号密码是否正确</p>
+                    <input type="text" id="verifyEmail" placeholder="员工邮箱（如 zhangsan@helixon.com）" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;margin-bottom:10px">
+                    <div style="display:flex;gap:10px">
+                        <input type="password" id="verifyPassword" placeholder="员工密码" style="flex:1;padding:10px;border:1px solid #ddd;border-radius:6px">
+                        <button type="button" onclick="verifyUser()" style="padding:10px 24px;background:#409EFF;color:#fff;border:none;border-radius:6px;cursor:pointer;white-space:nowrap">验证</button>
+                    </div>
+                    <div id="verifyResult" style="display:none;padding:12px;border-radius:6px;font-size:13px;word-break:break-all;margin-top:12px"></div>
+                </div>
             </div>
         </div>
-        
+
         <script>
             // 页面加载时获取域配置列表
             document.addEventListener('DOMContentLoaded', function() {
@@ -431,6 +442,39 @@ def domains_page():
             function hideAddForm() {
                 document.getElementById('addForm').style.display = 'none';
                 document.querySelector('.empty-state').style.display = 'block';
+            }
+
+            // 员工域账号验证
+            function verifyUser() {
+                const email = document.getElementById('verifyEmail').value.trim();
+                const password = document.getElementById('verifyPassword').value.trim();
+                if (!email || !password) { alert('请输入邮箱和密码'); return; }
+                const div = document.getElementById('verifyResult');
+                div.style.display = 'block';
+                div.style.background = '#f0f0f0';
+                div.style.color = '#666';
+                div.textContent = '⏳ 正在验证...';
+                fetch('/admin/api/admin/domains/verify-user', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username: email, password: password})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        div.style.background = '#f0f9eb';
+                        div.style.color = '#67C23A';
+                    } else {
+                        div.style.background = '#fef0f0';
+                        div.style.color = '#f56c6c';
+                    }
+                    div.textContent = data.message;
+                })
+                .catch(err => {
+                    div.style.background = '#fef0f0';
+                    div.style.color = '#f56c6c';
+                    div.textContent = '❌ 请求失败：' + err;
+                });
             }
             
             // SSL 切换时自动更新端口
@@ -2391,6 +2435,43 @@ def log_operation_api():
             'success': False,
             'message': str(e)
         }), 500
+
+
+@admin_bp.route('/api/admin/domains/verify-user', methods=['POST'])
+@admin_required
+def verify_user_credentials():
+    """验证员工域账号密码：管理员绑定查找用户 DN，再用员工凭据绑定验证。"""
+    from models.models import Domain
+    from services.ldap_service import LdapService
+
+    data = request.get_json()
+    email_or_username = data.get('username', '')
+    password = data.get('password', '')
+
+    if not email_or_username or not password:
+        return jsonify({'success': False, 'message': '请输入员工账号和密码'}), 400
+
+    domain = Domain.query.filter_by(is_active=True).order_by(Domain.id).first()
+    if not domain:
+        return jsonify({'success': False, 'message': '未配置域，请先添加域配置'}), 400
+
+    # 用管理员绑定查找用户
+    user_info = LdapService.lookup_user_by_email(domain, email_or_username)
+    if not user_info:
+        return jsonify({'success': False, 'message': f'未找到用户 {email_or_username}（检查邮箱是否正确）'}), 404
+
+    # 用员工的 DN + 密码做绑定验证
+    ok, msg = LdapService.verify_user_bind(domain, user_info['user_dn'], password)
+
+    # 返回用户信息 + 验证结果
+    phone = user_info.get('mobile', '')
+    masked = phone[:3] + '****' + phone[-4:] if len(phone) >= 7 else phone
+    info = f'用户：{user_info.get("sam_account_name", email_or_username)} | 邮箱：{user_info.get("mail","")} | 手机：{masked} | DN：{user_info.get("user_dn","")}'
+
+    if ok:
+        return jsonify({'success': True, 'message': f'✅ 验证成功！{info}'})
+    else:
+        return jsonify({'success': False, 'message': f'❌ {msg}。{info}'})
 
 
 @admin_bp.route('/change-password', methods=['GET', 'POST'])
