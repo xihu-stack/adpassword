@@ -886,21 +886,32 @@ class LdapService:
                     server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10,
                                     allowed_referral_hosts=[('*', True)])
                 else:
-                    server = Server(server_url, get_info=ALL)
+                    # 非 LDAPS：也配 TLS（供 STARTTLS 在 389 端口升级加密，AD 改密码要求）
+                    tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
+                                      ciphers='ALL:@SECLEVEL=0')
+                    server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10)
                 conn = None
                 try:
                     conn = Connection(server, user=domain.admin_dn,
                                       password=secret_decrypt(domain.admin_password),
-                                      authentication=SIMPLE, auto_bind=True)
+                                      authentication=SIMPLE, auto_bind=False)
+                    conn.open()
+                    if protocol == 'ldap':
+                        conn.start_tls()
+                    conn.bind()
+
                     result = conn.modify(user_dn, {'unicodePwd': [(MODIFY_REPLACE, [encoded])]})
                     if result:
                         conn.unbind()
-                        # 验证：用新密码做一次 LDAP 绑定，确认密码确实生效
                         try:
                             verify_conn = Connection(server, user=user_dn,
                                                     password=new_password,
-                                                    authentication=SIMPLE, auto_bind=True,
+                                                    authentication=SIMPLE, auto_bind=False,
                                                     receive_timeout=10)
+                            verify_conn.open()
+                            if protocol == 'ldap':
+                                verify_conn.start_tls()
+                            verify_conn.bind()
                             verify_conn.unbind()
                             return True, '密码修改成功（已验证）'
                         except Exception as ve:
