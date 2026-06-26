@@ -168,8 +168,7 @@ def login():
                 </form>
                 
                 <div class="domain-info">
-                    <p><strong>当前域:</strong> {{ domain_hint }}</p>
-                    <p><strong>提示:</strong> 请使用 AD 域账号和密码登录</p>
+                    <p><strong>提示:</strong> 请使用管理员账号登录（默认 admin / admin）</p>
                 </div>
             </div>
         </div>

@@ -178,9 +178,9 @@ def dashboard():
                     <div class="menu-icon">🔑</div>
                     <div class="menu-title">修改密码</div>
                 </a>
-                <a href="/" class="menu-item">
+                <a href="/reset" class="menu-item">
                     <div class="menu-icon">🏠</div>
-                    <div class="menu-title">返回首页</div>
+                    <div class="menu-title">重置页</div>
                 </a>
             </div>
         </div>
@@ -802,8 +802,8 @@ def sms_page():
                     template_code: document.getElementById('templateCode').value.trim()
                 };
                 
-                // 验证必填项
-                if (!formData.access_key || !formData.access_secret || !formData.sign_name || !formData.template_code) {
+                // 验证必填项（Secret 已配置时可留空，保持原值）
+                if (!formData.access_key || !formData.sign_name || !formData.template_code) {
                     alert('请填写完整的配置信息！');
                     return;
                 }
@@ -1984,10 +1984,12 @@ def create_domain_html():
         # 创建域配置对象
         domain = Domain(
             name=name,
+            ldap_hosts=ldap_host,
             ldap_host=ldap_host,
             ldap_port=ldap_port,
             base_dn=base_dn,
             admin_dn=admin_dn,
+            use_ssl=bool(request.form.get('use_ssl')),
             is_active=True
         )
         
@@ -2213,36 +2215,39 @@ def save_sms_config():
     from utils.logger import log_operation
     
     data = request.json
-    
+
     access_key = data.get('access_key')
     access_secret = data.get('access_secret')
     sign_name = data.get('sign_name')
     template_code = data.get('template_code')
-    
-    if not all([access_key, access_secret, sign_name, template_code]):
-        return jsonify({'success': False, 'message': '请填写完整的配置信息'}), 400
-    
-    # 保存或更新配置
+
     config = SmsConfig.query.first()
-    
+
+    # 验证：新建必须全部填；更新时 Secret 可留空（保持原值）
+    required = [access_key, sign_name, template_code]
+    if config is None:
+        required.append(access_secret)
+    if not all(required):
+        msg = '请填写完整的配置信息' + ('（含 AccessKey Secret）' if config is None else '')
+        return jsonify({'success': False, 'message': msg}), 400
+
     if config:
-        # 更新现有配置
         config.access_key = access_key
-        config.set_access_secret(access_secret)  # Fernet 加密存储
+        if access_secret:
+            config.set_access_secret(access_secret)
         config.sign_name = sign_name
         config.template_code = template_code
         config.is_active = True
         action = 'sms_config_update'
         details = f'更新短信配置：签名={sign_name}, 模板={template_code}'
     else:
-        # 创建新配置
         config = SmsConfig(
             access_key=access_key,
             sign_name=sign_name,
             template_code=template_code,
             is_active=True
         )
-        config.set_access_secret(access_secret)  # Fernet 加密存储
+        config.set_access_secret(access_secret)
         db.session.add(config)
         action = 'sms_config_create'
         details = f'创建短信配置：签名={sign_name}, 模板={template_code}'
