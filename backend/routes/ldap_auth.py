@@ -201,6 +201,23 @@ def authenticate():
     
     # 特殊处理：admin 账户使用本地密码认证 (不通过 LDAP)
     if username == 'admin':
+        # 管理员登录限流：同一 IP 失败 5 次锁 15 分钟
+        from models.models import db, SmsRateLimit
+        from datetime import datetime, timedelta
+        LOGIN_FAIL_LIMIT = 5
+        LOGIN_LOCK_MINUTES = 15
+        ip = request.remote_addr
+        rl = SmsRateLimit.query.filter_by(key_type='admin_login_fail', key_value=ip).first()
+        if rl and rl.sent_count >= LOGIN_FAIL_LIMIT:
+            elapsed = datetime.utcnow() - rl.window_start
+            if elapsed < timedelta(minutes=LOGIN_LOCK_MINUTES):
+                remaining = int((timedelta(minutes=LOGIN_LOCK_MINUTES) - elapsed).total_seconds() / 60) + 1
+                return redirect(url_for('ldap_auth.login', error=f'登录失败次数过多，请 {remaining} 分钟后再试', username=username))
+            else:
+                rl.sent_count = 0
+                rl.window_start = datetime.utcnow()
+                db.session.commit()
+
         # 检查数据库中是否存在 admin 用户
         admin_user = User.query.filter_by(username='admin').first()
         
@@ -213,9 +230,12 @@ def authenticate():
             import bcrypt
             try:
                 if bcrypt.checkpw(password.encode('utf-8'), admin_user.password_hash.encode('utf-8')):
-                    # 认证成功
+                    # 认证成功 — 清除失败计数
                     print(f'[本地认证] ✅ admin 账户认证成功')
-                    
+                    if rl:
+                        rl.sent_count = 0
+                        db.session.commit()
+
                     # 设置会话（先清空，防会话固定攻击）
                     session.clear()
                     session['user_id'] = admin_user.id
@@ -229,10 +249,21 @@ def authenticate():
                         target_user='admin',
                         details=f'管理员 admin 登录成功'
                     )
-                    
+
                     return redirect(url_for('admin.dashboard'))
                 else:
-                    # 密码错误
+                    # 密码错误 — 累加失败计数
+                    now = datetime.utcnow()
+                    if not rl:
+                        rl = SmsRateLimit(key_type='admin_login_fail', key_value=ip,
+                                          sent_count=0, window_start=now)
+                        db.session.add(rl)
+                    if now - rl.window_start > timedelta(minutes=LOGIN_LOCK_MINUTES):
+                        rl.sent_count = 0
+                        rl.window_start = now
+                    rl.sent_count += 1
+                    db.session.commit()
+
                     try:
                         from utils.logger import log_operation
                         log_operation('login_failed', target_user='admin', details='管理员登录密码错误')
