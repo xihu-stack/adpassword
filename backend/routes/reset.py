@@ -55,6 +55,12 @@ def verify_identity():
         return _fail('请输入邮箱和手机号', 1), 400
 
     svc = ResetService()
+
+    # IP 锁定检查（防枚举：同一 IP 连续失败超限则锁 30 分钟）
+    allowed, lock_msg = svc.check_ip_locked(request.remote_addr)
+    if not allowed:
+        return _fail(lock_msg or '尝试次数过多，请稍后再试', 1), 429
+
     matched, info = svc.find_user_by_email_phone(email, phone)
     if matched:
         session['reset_user_dn'] = info['user_dn']
@@ -62,6 +68,7 @@ def verify_identity():
         session['reset_email'] = info.get('mail', email)
         session['reset_started_at'] = datetime.utcnow().isoformat()
         session.pop('reset_authorized', None)
+        svc.reset_ip_fails(request.remote_addr)
         ok, _ = svc.issue_sms_code(info['user_dn'], info.get('mobile', phone),
                                    email=session.get('reset_email'), ip=request.remote_addr)
         if not ok:
@@ -73,7 +80,8 @@ def verify_identity():
             from services.reset_service import _DEMO_CODES
             demo_code = _DEMO_CODES.get(session.get('reset_phone'))
         return _ok('验证码已发送至您预留的手机', 3, demo_code=demo_code)
-    # 不匹配：明确拒绝，不进入下一步
+    # 不匹配：记录失败 + 明确拒绝，不进入下一步
+    svc.record_identity_fail(request.remote_addr)
     _audit('reset_identity_mismatch', target_user=email, details='邮箱+手机校验未通过')
     return _fail('邮箱或手机号与域控登记信息不匹配，请检查后重试', 1), 400
 

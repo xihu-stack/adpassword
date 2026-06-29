@@ -146,6 +146,47 @@ class ResetService:
         except Exception:
             return []
 
+    def check_ip_locked(self, ip):
+        """检查 IP 是否因多次身份校验失败被锁定。返回 (allowed, message)。"""
+        if not ip:
+            return True, None
+        rl = SmsRateLimit.query.filter_by(key_type='identity_fail', key_value=ip).first()
+        if rl and rl.sent_count >= IDENTITY_FAIL_LIMIT:
+            elapsed = datetime.utcnow() - rl.window_start
+            if elapsed < timedelta(minutes=IDENTITY_LOCK_MINUTES):
+                remaining = int((timedelta(minutes=IDENTITY_LOCK_MINUTES) - elapsed).total_seconds() / 60) + 1
+                return False, f'尝试次数过多，IP 已锁定，请 {remaining} 分钟后再试'
+            else:
+                rl.sent_count = 0
+                rl.window_start = datetime.utcnow()
+                db.session.commit()
+        return True, None
+
+    def record_identity_fail(self, ip):
+        """记录一次身份校验失败（邮箱+手机不匹配）。"""
+        if not ip:
+            return
+        now = datetime.utcnow()
+        rl = SmsRateLimit.query.filter_by(key_type='identity_fail', key_value=ip).first()
+        if not rl:
+            rl = SmsRateLimit(key_type='identity_fail', key_value=ip, sent_count=0, window_start=now)
+            db.session.add(rl)
+        if now - rl.window_start > timedelta(minutes=IDENTITY_LOCK_MINUTES):
+            rl.sent_count = 0
+            rl.window_start = now
+        rl.sent_count += 1
+        db.session.commit()
+
+    def reset_ip_fails(self, ip):
+        """身份校验成功后重置失败计数。"""
+        if not ip:
+            return
+        rl = SmsRateLimit.query.filter_by(key_type='identity_fail', key_value=ip).first()
+        if rl:
+            rl.sent_count = 0
+            rl.window_start = datetime.utcnow()
+            db.session.commit()
+
     def find_user_by_email_phone(self, email, phone):
         """返回 (matched: bool, info|None)。"""
         email = normalize_email(email)
