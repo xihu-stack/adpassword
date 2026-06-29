@@ -69,7 +69,7 @@ class ResetService:
     # ---------- 限流（并发安全） ----------
     def _check_cooldown(self, phone):
         """60s 手机号冷却：只读，按 purpose=reset 查最近一条验证码。"""
-        now = datetime.utcnow()
+        now = datetime.now()
         latest = SmsVerificationCode.query.filter_by(phone=phone, purpose='reset').order_by(
             SmsVerificationCode.created_at.desc()).first()
         if latest and latest.created_at and now - latest.created_at < timedelta(seconds=PHONE_COOLDOWN_SECONDS):
@@ -79,7 +79,7 @@ class ResetService:
     def _reserve_quota(self, phone, email, ip):
         """原子预留发送额度：PG 行锁(with_for_update)下检查+累加，全成功或全回滚。
         SQLite 测试环境为单线程，with_for_update 被忽略，功能等价。"""
-        now = datetime.utcnow()
+        now = datetime.now()
         keys = (('phone', phone, HOURLY_LIMIT_PHONE),
                 ('email', email, HOURLY_LIMIT_EMAIL),
                 ('ip', ip, HOURLY_LIMIT_IP))
@@ -105,7 +105,7 @@ class ResetService:
 
     def _refund_quota(self, phone, email, ip):
         """发送失败时退还额度（与 _reserve_quota 对称）。"""
-        now = datetime.utcnow()
+        now = datetime.now()
         for key_type, key_value in (('phone', phone), ('email', email), ('ip', ip)):
             if not key_value:
                 continue
@@ -120,7 +120,7 @@ class ResetService:
         ok, reason = self._check_cooldown(phone)
         if not ok:
             return False, reason
-        now = datetime.utcnow()
+        now = datetime.now()
         for key_type, key_value, cap in (('phone', phone, HOURLY_LIMIT_PHONE),
                                          ('email', email, HOURLY_LIMIT_EMAIL),
                                          ('ip', ip, HOURLY_LIMIT_IP)):
@@ -152,13 +152,13 @@ class ResetService:
             return True, None
         rl = SmsRateLimit.query.filter_by(key_type='identity_fail', key_value=ip).first()
         if rl and rl.sent_count >= IDENTITY_FAIL_LIMIT:
-            elapsed = datetime.utcnow() - rl.window_start
+            elapsed = datetime.now() - rl.window_start
             if elapsed < timedelta(minutes=IDENTITY_LOCK_MINUTES):
                 remaining = int((timedelta(minutes=IDENTITY_LOCK_MINUTES) - elapsed).total_seconds() / 60) + 1
                 return False, f'尝试次数过多，IP 已锁定，请 {remaining} 分钟后再试'
             else:
                 rl.sent_count = 0
-                rl.window_start = datetime.utcnow()
+                rl.window_start = datetime.now()
                 db.session.commit()
         return True, None
 
@@ -166,7 +166,7 @@ class ResetService:
         """记录一次身份校验失败（邮箱+手机不匹配）。"""
         if not ip:
             return
-        now = datetime.utcnow()
+        now = datetime.now()
         rl = SmsRateLimit.query.filter_by(key_type='identity_fail', key_value=ip).first()
         if not rl:
             rl = SmsRateLimit(key_type='identity_fail', key_value=ip, sent_count=0, window_start=now)
@@ -184,7 +184,7 @@ class ResetService:
         rl = SmsRateLimit.query.filter_by(key_type='identity_fail', key_value=ip).first()
         if rl:
             rl.sent_count = 0
-            rl.window_start = datetime.utcnow()
+            rl.window_start = datetime.now()
             db.session.commit()
 
     def find_user_by_email_phone(self, email, phone):
@@ -237,7 +237,7 @@ class ResetService:
         hashed = bcrypt.hashpw(code.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         rec = SmsVerificationCode(
             phone=phone, code=hashed, purpose='reset', fail_count=0,
-            expires_at=datetime.utcnow() + timedelta(minutes=CODE_TTL_MINUTES))
+            expires_at=datetime.now() + timedelta(minutes=CODE_TTL_MINUTES))
         db.session.add(rec)
         db.session.commit()
 
@@ -290,7 +290,7 @@ class ResetService:
                .first())
         if not rec:
             return False, '请先获取验证码'
-        if datetime.utcnow() > rec.expires_at:
+        if datetime.now() > rec.expires_at:
             rec.is_used = True
             db.session.commit()
             return False, '验证码已失效，请重新获取'

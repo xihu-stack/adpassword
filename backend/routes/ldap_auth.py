@@ -209,13 +209,13 @@ def authenticate():
         ip = request.remote_addr
         rl = SmsRateLimit.query.filter_by(key_type='admin_login_fail', key_value=ip).first()
         if rl and rl.sent_count >= LOGIN_FAIL_LIMIT:
-            elapsed = datetime.utcnow() - rl.window_start
+            elapsed = datetime.now() - rl.window_start
             if elapsed < timedelta(minutes=LOGIN_LOCK_MINUTES):
                 remaining = int((timedelta(minutes=LOGIN_LOCK_MINUTES) - elapsed).total_seconds() / 60) + 1
                 return redirect(url_for('ldap_auth.login', error=f'登录失败次数过多，请 {remaining} 分钟后再试', username=username))
             else:
                 rl.sent_count = 0
-                rl.window_start = datetime.utcnow()
+                rl.window_start = datetime.now()
                 db.session.commit()
 
         # 检查数据库中是否存在 admin 用户
@@ -253,7 +253,7 @@ def authenticate():
                     return redirect(url_for('admin.dashboard'))
                 else:
                     # 密码错误 — 累加失败计数
-                    now = datetime.utcnow()
+                    now = datetime.now()
                     if not rl:
                         rl = SmsRateLimit(key_type='admin_login_fail', key_value=ip,
                                           sent_count=0, window_start=now)

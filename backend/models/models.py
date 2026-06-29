@@ -20,8 +20,8 @@ class Domain(db.Model):
     use_ssl = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
     is_connected = db.Column(db.Boolean, default=False)  # 连接状态
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
     def to_dict(self):
         return {
@@ -62,8 +62,8 @@ class User(db.Model):
     role = db.Column(db.String(20), default='user')  # 'admin' or 'user'
     domain_id = db.Column(db.Integer, db.ForeignKey('domains.id'))
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
     # AD 用户信息
     ad_dn = db.Column(db.String(255))  # AD 区分名
@@ -93,8 +93,8 @@ class SmsConfig(db.Model):
     sign_name = db.Column(db.String(50), nullable=False)
     template_code = db.Column(db.String(50), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
     def to_dict(self):
         return {
@@ -122,7 +122,7 @@ class AdminLog(db.Model):
     target_user = db.Column(db.String(100))
     details = db.Column(db.Text)
     ip_address = db.Column(db.String(50))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
     
     admin = db.relationship('User', backref=db.backref('logs', lazy='dynamic'))
     
@@ -149,7 +149,7 @@ class SmsVerificationCode(db.Model):
     expires_at = db.Column(db.DateTime, nullable=False)
     fail_count = db.Column(db.Integer, default=0)
     purpose = db.Column(db.String(30), default='reset')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 class SystemSetting(db.Model):
@@ -160,7 +160,7 @@ class SystemSetting(db.Model):
     setting_value = db.Column(db.Text)
     setting_type = db.Column(db.String(20), default='string')  # string, boolean, integer, json
     description = db.Column(db.String(500))
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
     def to_dict(self):
         return {
@@ -180,7 +180,7 @@ class SmsRateLimit(db.Model):
     key_type = db.Column(db.String(20), nullable=False)   # phone|email|ip
     key_value = db.Column(db.String(200), nullable=False)
     sent_count = db.Column(db.Integer, default=0)
-    window_start = db.Column(db.DateTime, default=datetime.utcnow)
+    window_start = db.Column(db.DateTime, default=datetime.now)
 
     __table_args__ = (
         db.UniqueConstraint('key_type', 'key_value', name='uq_sms_rate_key'),

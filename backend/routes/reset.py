@@ -10,7 +10,7 @@ def _reset_expired():
     if not started:
         return True
     try:
-        return datetime.utcnow() - datetime.fromisoformat(started) > timedelta(minutes=RESET_SESSION_MINUTES)
+        return datetime.now() - datetime.fromisoformat(started) > timedelta(minutes=RESET_SESSION_MINUTES)
     except (ValueError, TypeError):
         return True
 
@@ -66,7 +66,7 @@ def verify_identity():
         session['reset_user_dn'] = info['user_dn']
         session['reset_phone'] = info.get('mobile', phone)
         session['reset_email'] = info.get('mail', email)
-        session['reset_started_at'] = datetime.utcnow().isoformat()
+        session['reset_started_at'] = datetime.now().isoformat()
         session.pop('reset_authorized', None)
         svc.reset_ip_fails(request.remote_addr)
         ok, _ = svc.issue_sms_code(info['user_dn'], info.get('mobile', phone),
