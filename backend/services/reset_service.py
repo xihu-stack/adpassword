@@ -323,6 +323,8 @@ class ResetService:
         ok, msg = self.ldap.admin_set_password_by_dn(domain, user_dn, new_password)
         if not ok:
             current_app.logger.error('AD 改密失败 user_dn=%s: %s', user_dn, msg)
+            if '0000052D' in msg or 'WILL_NOT_PERFORM' in msg:
+                return False, '新密码不符合域控密码策略（可能包含用户名、与历史密码重复、或修改过于频繁），请换一个全新的密码重试'
             return False, '重置失败，请联系管理员'
         return True, 'OK'
 

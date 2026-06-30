@@ -897,7 +897,9 @@ class LdapService:
                                       authentication=SIMPLE, auto_bind=False)
                     conn.open()
                     if protocol == 'ldap':
-                        conn.start_tls()
+                        tls_ok = conn.start_tls()
+                        if not tls_ok:
+                            raise Exception('STARTTLS 失败（域控可能未安装证书），result=%s' % conn.result)
                     conn.bind()
 
                     result = conn.modify(user_dn, {'unicodePwd': [(MODIFY_REPLACE, [encoded])]})
@@ -910,7 +912,9 @@ class LdapService:
                                                     receive_timeout=10)
                             verify_conn.open()
                             if protocol == 'ldap':
-                                verify_conn.start_tls()
+                                vtls_ok = verify_conn.start_tls()
+                                if not vtls_ok:
+                                    pass  # 验证用，不阻断
                             verify_conn.bind()
                             verify_conn.unbind()
                             return True, '密码修改成功（已验证）'
