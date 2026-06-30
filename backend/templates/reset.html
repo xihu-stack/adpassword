@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>华深智药 · 密码自助重置</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
@@ -23,7 +23,7 @@
     .body { padding:18px 26px 28px; text-align:left; }
     .step { display:none; } .step.active { display:block; }
     label { display:block; font-size:13px; color:#333; margin-bottom:6px; font-weight:600; }
-    input { width:100%; padding:11px 13px; border:2px solid #e0e0e0; border-radius:8px; font-size:14px; margin-bottom:14px; transition:border-color .2s; }
+    input { width:100%; padding:11px 13px; border:2px solid #e0e0e0; border-radius:8px; font-size:16px; margin-bottom:14px; transition:border-color .2s; }
     input:focus { outline:none; border-color:#1f5fa8; }
     .row { display:flex; gap:10px; } .row input { margin-bottom:14px; }
     button { width:100%; padding:13px; border:none; border-radius:8px; font-size:15px; font-weight:700;
@@ -31,7 +31,7 @@
     button:hover { opacity:.92; }
     button:disabled { opacity:.6; cursor:not-allowed; }
     .btn-ghost { background:#eee; color:#666; margin-top:10px; }
-    .msg { font-size:13px; padding:10px 12px; border-radius:6px; margin-bottom:14px; display:none; }
+    .msg { font-size:13px; padding:10px 12px; border-radius:6px; margin-bottom:14px; display:none; word-break:break-word; }
     .msg.ok { background:#f0f9eb; color:#67C23A; display:block; }
     .msg.err { background:#fef0f0; color:#f56c6c; display:block; }
     .hint { font-size:12px; color:#999; margin-top:14px; line-height:1.6; }
@@ -173,7 +173,6 @@
       box.appendChild(e);
       setTimeout(()=>e.remove(),2800);
     }
-  }
   }
 </script>
 </body>
