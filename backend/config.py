@@ -59,6 +59,11 @@ class Config:
     # 短信异步发送：生产 true（后台发送，响应即返回，抹平匹配/不匹配时序差）。
     # 演示/测试关掉（同步发送，便于回显验证码与测试断言）。
     SMS_ASYNC_SEND = os.getenv('SMS_ASYNC_SEND', 'true').lower() == 'true'
+
+    # 管理员内网白名单：只有这些 IP/CIDR 能访问 /login 和 /admin/*
+    # 多个用逗号分隔，如 '10.0.0.0/8,192.168.0.0/16,127.0.0.1'
+    # 留空 = 不限制（所有 IP 可访问）
+    ADMIN_ALLOWED_IPS = [s.strip() for s in os.getenv('ADMIN_ALLOWED_IPS', '').split(',') if s.strip()]
     
     # 安全增强配置
     WTF_CSRF_ENABLED = True

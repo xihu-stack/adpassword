@@ -1,12 +1,14 @@
 from flask import Blueprint, request, redirect, session, url_for, current_app, render_template_string
 from models.models import db, User, Domain
 from services.ldap_service import LdapService
+from utils.decorators import internal_only
 import bcrypt
 
 ldap_auth_bp = Blueprint('ldap_auth', __name__)
 
 
 @ldap_auth_bp.route('/login')
+@internal_only
 def login():
     """LDAP 登录页面"""
     if 'user_id' in session:
@@ -191,6 +193,7 @@ def login():
 
 
 @ldap_auth_bp.route('/authenticate', methods=['POST'])
+@internal_only
 def authenticate():
     """LDAP 认证处理 - 使用 userPrincipalName 登录 (admin 使用本地认证)"""
     username = request.form.get('username')
