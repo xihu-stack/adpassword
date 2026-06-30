@@ -125,10 +125,22 @@ def do_reset():
     data = request.get_json(silent=True) or {}
     new_password = data.get('new_password')
     confirm = data.get('confirm_password')
+    # 诊断：记录密码长度和来源（不记录密码本身），排查 WAF 篡改
+    current_app.logger.info('do-reset: user=%s pw_len=%d confirm_len=%d match=%s ip=%s',
+                            session.get('reset_email'),
+                            len(new_password) if new_password else -1,
+                            len(confirm) if confirm else -1,
+                            new_password == confirm,
+                            request.remote_addr)
     if new_password != confirm:
         return _fail('两次输入的新密码不一致', 4), 400
 
     svc = ResetService()
+    # 额外检查：密码不能包含用户名/邮箱前缀（AD 域策略会拒绝）
+    email_user = (session.get('reset_email') or '').split('@')[0].lower()
+    if email_user and len(email_user) >= 3 and email_user in new_password.lower():
+        return _fail('新密码不能包含用户名，请换一个', 4), 400
+
     ok, msg = svc.perform_reset(session['reset_user_dn'], new_password)
     if not ok:
         _audit('password_reset_failed', target_user=session.get('reset_email'), details=msg or '重置失败')
