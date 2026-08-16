@@ -182,6 +182,10 @@ def dashboard():
                     <div class="menu-icon">🏠</div>
                     <div class="menu-title">重置页</div>
                 </a>
+                <a href="/admin/manual" class="menu-item">
+                    <div class="menu-icon">📖</div>
+                    <div class="menu-title">运维手册</div>
+                </a>
             </div>
         </div>
         
@@ -2672,6 +2676,411 @@ def protected_page():
             document.getElementById('newItem').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addItem(); }});
             load();
         </script>
+    </body>
+    </html>
+    '''
+    return render_template_string(html, username=username)
+
+
+@admin_bp.route('/manual')
+@admin_required
+def manual_page():
+    """运维操作使用手册页面"""
+    username = session.get('username', '管理员')
+    html = '''
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>运维操作手册 - 华深智药</title>
+        <style>
+            * { margin:0; padding:0; box-sizing:border-box; }
+            body { font-family:'Microsoft YaHei',Arial,sans-serif; background:#f5f7fa; color:#333; }
+            .header { background:linear-gradient(135deg,#15376b 0%,#1f5fa8 100%); color:#fff; padding:20px 40px; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:100; box-shadow:0 2px 10px rgba(0,0,0,.15); }
+            .header h1 { font-size:22px; }
+            .logout-btn { background:rgba(255,255,255,.2); color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; text-decoration:none; }
+            .logout-btn:hover { background:rgba(255,255,255,.3); }
+            .layout { max-width:1400px; margin:0 auto; padding:30px 20px; display:flex; gap:24px; align-items:flex-start; }
+            .toc { width:230px; flex-shrink:0; position:sticky; top:96px; background:#fff; border-radius:10px; padding:20px 0; box-shadow:0 2px 10px rgba(0,0,0,.05); max-height:calc(100vh - 130px); overflow-y:auto; }
+            .toc a { display:block; padding:9px 20px; color:#555; text-decoration:none; font-size:13px; border-left:3px solid transparent; }
+            .toc a:hover { color:#1f5fa8; background:#f0f6ff; border-left-color:#1f5fa8; }
+            .toc .toc-sub a { padding-left:34px; font-size:12px; color:#888; }
+            .content { flex:1; min-width:0; }
+            .back-btn { display:inline-block; margin-bottom:20px; padding:8px 20px; background:#fff; color:#15376b; text-decoration:none; border-radius:4px; font-size:14px; }
+            .card { background:#fff; border-radius:10px; padding:30px 34px; box-shadow:0 2px 10px rgba(0,0,0,.05); margin-bottom:24px; scroll-margin-top:96px; }
+            .card h2 { font-size:20px; color:#15376b; margin-bottom:16px; padding-bottom:12px; border-bottom:2px solid #eef3fb; display:flex; align-items:center; gap:8px; }
+            .card h3 { font-size:15px; color:#1f5fa8; margin:22px 0 10px; }
+            .card p { font-size:14px; line-height:1.9; color:#444; margin-bottom:10px; }
+            .card ul, .card ol { padding-left:22px; margin-bottom:10px; }
+            .card li { font-size:14px; line-height:1.9; color:#444; }
+            table { width:100%; border-collapse:collapse; margin:12px 0 16px; font-size:13px; }
+            th { background:#f0f6ff; color:#15376b; font-weight:600; }
+            th, td { padding:9px 12px; border:1px solid #e6eef9; text-align:left; vertical-align:top; }
+            tr:nth-child(even) td { background:#fafcff; }
+            code { background:#eef3fb; color:#1a4a8c; padding:2px 7px; border-radius:4px; font-family:Consolas,'Courier New',monospace; font-size:12.5px; word-break:break-all; }
+            pre { background:#0f2444; color:#d8e6ff; padding:16px 18px; border-radius:8px; overflow-x:auto; margin:12px 0 16px; line-height:1.7; }
+            pre code { background:none; color:#d8e6ff; padding:0; font-size:12.5px; }
+            .tip { background:#f0f9eb; border-left:4px solid #67C23A; padding:12px 16px; border-radius:0 6px 6px 0; margin:12px 0; font-size:13px; line-height:1.8; color:#4a6b3a; }
+            .warn { background:#fdf6ec; border-left:4px solid #E6A23C; padding:12px 16px; border-radius:0 6px 6px 0; margin:12px 0; font-size:13px; line-height:1.8; color:#8a6d3b; }
+            .danger { background:#fef0f0; border-left:4px solid #F56C6C; padding:12px 16px; border-radius:0 6px 6px 0; margin:12px 0; font-size:13px; line-height:1.8; color:#a05252; }
+            .flow { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0; }
+            .flow-step { background:linear-gradient(135deg,#15376b,#1f5fa8); color:#fff; padding:12px 18px; border-radius:8px; font-size:13px; text-align:center; flex:1; min-width:130px; line-height:1.6; }
+            .flow-step small { display:block; opacity:.85; font-size:11.5px; }
+            .flow-arrow { color:#1f5fa8; font-size:18px; font-weight:bold; }
+            details { background:#f8faff; border:1px solid #e6eef9; border-radius:8px; margin-bottom:10px; overflow:hidden; }
+            details summary { padding:13px 18px; font-size:14px; font-weight:600; color:#15376b; cursor:pointer; list-style:none; display:flex; align-items:center; gap:8px; }
+            details summary::before { content:'❓'; }
+            details[open] summary::before { content:'✅'; }
+            details summary:hover { background:#f0f6ff; }
+            details .answer { padding:4px 20px 14px; font-size:13.5px; line-height:1.9; color:#444; border-top:1px dashed #e6eef9; }
+            .kbd { display:inline-block; background:#fff; border:1px solid #ccc; border-bottom-width:2px; border-radius:4px; padding:1px 6px; font-size:12px; font-family:monospace; }
+            .footer-note { text-align:center; color:#999; font-size:12px; padding:10px 0 30px; line-height:1.8; }
+            @media (max-width: 900px) {
+                .layout { flex-direction:column; }
+                .toc { width:100%; position:static; max-height:none; }
+                .header { padding:16px 20px; }
+                .card { padding:22px 18px; }
+            }
+            @media print {
+                .toc, .back-btn, .logout-btn { display:none; }
+                .layout { padding:0; }
+                .card { box-shadow:none; border:1px solid #ddd; page-break-inside:avoid; }
+                body { background:#fff; }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="华深智药" style="height:30px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.25));">
+                <h1>📖 运维操作手册 · 域账号密码自助重置系统</h1>
+            </div>
+            <div>
+                <span style="margin-right:15px;">{{ username }}</span>
+                <a href="/logout" class="logout-btn">退出登录</a>
+            </div>
+        </div>
+
+        <div class="layout">
+            <nav class="toc">
+                <a href="#c1">1. 系统概览与访问入口</a>
+                <a href="#c2">2. 首次上线流程</a>
+                <a href="#c3">3. 服务管理（启停/日志）</a>
+                <a href="#c4">4. 管理后台功能说明</a>
+                <div class="toc-sub">
+                    <a href="#c4-1">4.1 域配置管理</a>
+                    <a href="#c4-2">4.2 短信配置</a>
+                    <a href="#c4-3">4.3 操作日志</a>
+                    <a href="#c4-4">4.4 保护名单</a>
+                    <a href="#c4-5">4.5 修改管理员密码</a>
+                </div>
+                <a href="#c5">5. 用户自助重置流程</a>
+                <a href="#c6">6. 配置项说明（.env）</a>
+                <a href="#c7">7. 安全与限流机制</a>
+                <a href="#c8">8. 日常巡检与备份</a>
+                <a href="#c9">9. 常见问题排查（FAQ）</a>
+                <a href="#c10">10. 应急联系与升级注意</a>
+            </nav>
+
+            <div class="content">
+                <a href="/admin/dashboard" class="back-btn">← 返回管理后台</a>
+
+                <!-- ================= 1 系统概览 ================= -->
+                <div class="card" id="c1">
+                    <h2>1️⃣ 系统概览与访问入口</h2>
+                    <p>本系统面向远程/办公用户提供 <b>AD 域账号忘记密码的自助重置</b> 服务：用户在公开页面输入邮箱与手机号，系统与域控（AD）登记信息比对，比对通过后发送短信验证码，验证通过即可设置新密码。AD 密码修改完成后由 <b>Microsoft Entra Connect 自动同步到 Azure AD</b>（本系统不直连 AAD）。</p>
+                    <h3>技术栈</h3>
+                    <p>Python 3.10+ · Flask 3 · SQLAlchemy · ldap3（AD/LDAP）· 阿里云短信 SDK · cryptography（Fernet 凭据加密）· SQLite（默认）/ PostgreSQL · gunicorn（Linux）/ waitress（Windows）</p>
+                    <h3>网络架构</h3>
+                    <pre><code>内网用户 ──HTTP──&gt;  服务器:5000 (gunicorn)
+外网用户 ──HTTPS──&gt; [WAF（证书/TLS）] ──HTTP──&gt; 服务器:5000
+                                            ├─ /reset    公开重置向导（全网开放）
+                                            ├─ /login    管理员登录（可限内网白名单）
+                                            └─ /admin/*  管理后台
+        服务器 ──LDAP(389/STARTTLS 或 636/LDAPS)──&gt; 域控 AD
+        服务器 ──API──&gt; 阿里云短信（验证码 + 重置通知）
+[Microsoft Entra Connect]  自动同步 AD 密码到 Azure AD / M365</code></pre>
+                    <h3>访问入口</h3>
+                    <table>
+                        <tr><th>入口</th><th>地址</th><th>说明</th></tr>
+                        <tr><td>用户重置页</td><td><code>/reset</code></td><td>公开页面，全员可用，无需登录</td></tr>
+                        <tr><td>管理员登录</td><td><code>/login</code></td><td>默认账号 <code>admin</code>；登录失败 5 次锁 IP 15 分钟；可配置 <code>ADMIN_ALLOWED_IPS</code> 内网白名单</td></tr>
+                        <tr><td>管理后台首页</td><td><code>/admin/dashboard</code></td><td>登录后进入，含统计卡片与功能菜单</td></tr>
+                        <tr><td>健康检查</td><td><code>/health</code></td><td>返回 JSON 状态，可用于负载均衡/监控探活</td></tr>
+                        <tr><td>退出登录</td><td><code>/logout</code></td><td>清除会话</td></tr>
+                    </table>
+                    <div class="tip">💡 默认端口 <b>5000</b>。完整地址形如 <code>http://服务器IP:5000/reset</code>；外网经 WAF 以 HTTPS 访问。</div>
+                </div>
+
+                <!-- ================= 2 首次上线 ================= -->
+                <div class="card" id="c2">
+                    <h2>2️⃣ 首次上线流程</h2>
+                    <h3>2.1 服务器部署（Linux，一条命令）</h3>
+                    <pre><code>cd 项目目录
+bash deploy_linux.sh prod</code></pre>
+                    <p>脚本自动完成：创建虚拟环境 → 升级 pip → 安装依赖 → 生成 <code>.env</code>（随机 SECRET_KEY 与加密密钥）→ 强制 <code>DEMO_MODE=false</code> → 端口冲突检查 → 后台启动 gunicorn（2 workers × 4 threads）。首次启动自动建表并创建管理员 <code>admin</code>。</p>
+                    <table>
+                        <tr><th>场景</th><th>命令</th></tr>
+                        <tr><td>自定义初始管理员口令</td><td><code>ADMIN_PASSWORD=你的强口令 bash deploy_linux.sh prod</code></td></tr>
+                        <tr><td>使用 PostgreSQL</td><td><code>DATABASE_URL=postgresql://user:pwd@host:5432/db bash deploy_linux.sh prod</code></td></tr>
+                        <tr><td>更换端口</td><td><code>SYSTEM_PORT=5001 bash deploy_linux.sh prod</code></td></tr>
+                        <tr><td>DEMO 体验模式</td><td><code>bash deploy_linux.sh</code>（不连真实 AD，邮箱任意、手机 13800000000）</td></tr>
+                        <tr><td>Windows 服务器</td><td>运行 <code>deploy_windows.bat</code> 或 <code>start_windows.bat</code>；直接 <code>python app.py</code> 时自动使用 waitress</td></tr>
+                    </table>
+                    <h3>2.2 登录后台后必做 3 件事</h3>
+                    <ol>
+                        <li><b>🌐 域配置</b> → 填域名（Base DN / 管理员 DN 自动生成）→ 点【🔗 测试连接】通过后再保存 → 用【🔍 员工域账号验证】拿一个真实员工账号复核；</li>
+                        <li><b>💬 短信配置</b> → 填阿里云 AccessKey / Secret / 签名 / 模板 CODE → 保存后【发送测试】到自己手机确认能收到；</li>
+                        <li><b>🔑 修改密码</b> → 把默认的 <code>admin/admin</code> 改成强口令（默认口令存在被登录的风险，务必第一时间修改）。</li>
+                    </ol>
+                    <div class="warn">⚠️ 生产环境必须保证 <code>DEMO_MODE=false</code>（prod 部署脚本会自动强制）。DEMO 模式不连真实域控与短信，仅用于体验。</div>
+                    <h3>2.3 可选：开机常驻（systemd）</h3>
+                    <pre><code># 先按实际部署路径修改服务文件中的路径，再执行：
+sudo cp systemd/ad-password-manager.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now ad-password-manager</code></pre>
+                    <p>使用 systemd 后服务崩溃自动重启（Restart=always）、开机自启；此时不需要再跑 deploy 脚本启动。</p>
+                    <h3>2.4 HTTPS（WAF 场景）</h3>
+                    <p>服务器本机跑 HTTP:5000，由 WAF 回源并挂证书；防火墙将 5000 端口限制为只允许 WAF 与内网网段访问。<code>.env</code> 保持 <code>HTTPS_ENABLED=false</code>（同时兼容内网 HTTP 直连与外网 WAF HTTPS）。若纯 HTTPS 部署则改为 <code>true</code>（Session Cookie 仅走 HTTPS）。</p>
+                </div>
+
+                <!-- ================= 3 服务管理 ================= -->
+                <div class="card" id="c3">
+                    <h2>3️⃣ 服务管理（启停 / 状态 / 日志）</h2>
+                    <h3>3.1 deploy 脚本方式（默认部署）</h3>
+                    <table>
+                        <tr><th>操作</th><th>命令</th></tr>
+                        <tr><td>查看状态</td><td><code>bash deploy_linux.sh status</code></td></tr>
+                        <tr><td>停止服务</td><td><code>bash deploy_linux.sh stop</code></td></tr>
+                        <tr><td>重启服务</td><td>重新执行 <code>bash deploy_linux.sh prod</code>（自动停旧起新）</td></tr>
+                        <tr><td>查看进程 PID</td><td><code>cat backend/.app.pid</code></td></tr>
+                        <tr><td>查看实时日志</td><td><code>tail -f backend/logs/app.log</code></td></tr>
+                    </table>
+                    <h3>3.2 systemd 方式（安装后）</h3>
+                    <pre><code>sudo systemctl start|stop|restart ad-password-manager   # 启动/停止/重启
+sudo systemctl status ad-password-manager              # 状态
+sudo journalctl -u ad-password-manager -f              # 实时日志
+sudo journalctl -u ad-password-manager -n 100          # 最近 100 行</code></pre>
+                    <h3>3.3 日志说明</h3>
+                    <ul>
+                        <li>应用日志：<code>backend/logs/app.log</code>，自动轮转（单文件 10MB，保留 5 份），包含请求日志、LDAP 改密诊断、审计事件等；</li>
+                        <li>gunicorn 启动输出也追加写入 <code>backend/logs/app.log</code>；</li>
+                        <li>业务审计（登录/重置/配置变更等）同时可在后台【📊 操作日志】页面按类型、用户、日期筛选查询。</li>
+                    </ul>
+                    <h3>3.4 常用检查命令</h3>
+                    <pre><code>curl http://127.0.0.1:5000/health          # 健康检查（正常返回 status: healthy）
+ss -tlnp | grep :5000                     # 查看端口占用
+ps aux | grep gunicorn                    # 查看进程</code></pre>
+                </div>
+
+                <!-- ================= 4 后台功能 ================= -->
+                <div class="card" id="c4">
+                    <h2>4️⃣ 管理后台功能说明</h2>
+
+                    <h3 id="c4-1">4.1 🌐 域配置管理（/admin/domains）</h3>
+                    <p>配置要对接的 AD 域控。点击【添加域配置】：</p>
+                    <ul>
+                        <li><b>域名</b>：填域名（如 <code>helixon.com</code>），Base DN（<code>DC=helixon,DC=com</code>）与管理员 DN 会<b>自动生成</b>，可手动微调；</li>
+                        <li><b>LDAP 主机 / 端口</b>：默认 389（明文端口，改密时自动升级 STARTTLS 加密，域控需安装证书）；勾选"启用 LDAPS"则切到 636 端口 SSL 直连；</li>
+                        <li><b>管理员账号名 / 密码</b>：用于查询用户、执行改密的 AD 服务账号凭据，<b>Fernet 加密存储</b>，接口永不回传明文；</li>
+                        <li>先点【🔗 测试连接】通过后【保存配置】按钮才会启用。</li>
+                    </ul>
+                    <p>列表页可对已存域执行【测试连接】【编辑】【删除】。<b>🔍 员工域账号验证</b>：输入任一员工的邮箱+密码即可验证"域控连通 + 账号密码正确"，用于上线自检和协助员工排查登录问题。</p>
+                    <div class="tip">💡 改密默认走 389 端口 STARTTLS 加密，<b>无需在域控上开放 636/LDAPS</b>；但域控必须安装计算机证书，否则 STARTTLS 升级会失败（见 FAQ）。</div>
+
+                    <h3 id="c4-2">4.2 💬 短信配置（/admin/sms）</h3>
+                    <p>配置阿里云短信服务（验证码与重置通知都走它）：</p>
+                    <ul>
+                        <li><b>Access Key ID / Secret</b>：阿里云 RAM 账号密钥，Secret 加密存储、不回传（已配置时留空表示保持不变）；</li>
+                        <li><b>短信签名</b>：需提前在阿里云控制台申请通过；</li>
+                        <li><b>模板 CODE</b>：验证码模板（形如 <code>SMS_123456789</code>）；</li>
+                        <li>【发送测试】填自己手机号验证整条链路（会产生少量短信费用）。</li>
+                    </ul>
+
+                    <h3 id="c4-3">4.3 📊 操作日志（/admin/logs）</h3>
+                    <p>系统审计日志，支持按<b>操作类型</b>（登录成功/失败、重置成功/失败、身份校验、验证码错误、短信故障、管理员改密、保护名单更新、域配置变更、短信配置等）、<b>用户名</b>、<b>日期</b>筛选，分页浏览。可用于安全审计与故障定位。</p>
+
+                    <h3 id="c4-4">4.4 🛡️ 保护名单（/admin/protected）</h3>
+                    <p>名单中的账号<b>禁止</b>通过公开 /reset 自助重置（防止域管/服务账号密码被恶意重置）：</p>
+                    <ul>
+                        <li>默认含 <code>admin</code>、<code>Administrator</code>；</li>
+                        <li>支持三种标识（不区分大小写）：用户 DN、sAMAccountName、组 DN（memberOf 匹配）；</li>
+                        <li>建议加入：域管理员组 DN、所有服务账号；</li>
+                        <li>添加/删除后需点【💾 保存名单】生效。</li>
+                    </ul>
+
+                    <h3 id="c4-5">4.5 🔑 修改密码（/admin/change-password）</h3>
+                    <p>管理员修改自己的后台登录口令：需先输入当前密码验证；新密码至少 8 位且含大小写字母、数字、特殊字符。修改成功后下次登录使用新密码。</p>
+                </div>
+
+                <!-- ================= 5 用户流程 ================= -->
+                <div class="card" id="c5">
+                    <h2>5️⃣ 用户自助重置流程（可转发给员工）</h2>
+                    <div class="flow">
+                        <div class="flow-step">① 身份校验<small>输入 AD 登记的<br>邮箱 + 手机号</small></div>
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-step">② 短信验证码<small>60 秒可重发<br>5 分钟内有效</small></div>
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-step">③ 设置新密码<small>两次输入一致<br>需符合密码策略</small></div>
+                        <div class="flow-arrow">→</div>
+                        <div class="flow-step">④ 完成<small>动画成功页<br>新密码立即可用</small></div>
+                    </div>
+                    <ul>
+                        <li>邮箱与手机号必须与 <b>AD 中登记的 mail / mobile 完全一致</b>，否则第一步即被拒绝；</li>
+                        <li>新密码要求：至少 8 位，包含大写、小写、数字、特殊字符，且<b>不能包含用户名</b>（AD 域策略会拒绝）；</li>
+                        <li>重置成功后：<b>域内登录（电脑解锁、VPN 等）立即生效</b>；云服务（M365/邮箱等）因依赖 Entra Connect 同步，约 <b>2-3 分钟</b>后生效；</li>
+                        <li>整个向导会话 10 分钟超时，超时需重新开始；验证码输错 5 次作废需重发。</li>
+                    </ul>
+                    <div class="tip">💡 员工反馈"邮箱手机都对却过不了第一步"时，多为 AD 属性未登记或与员工填写不一致，请用后台【员工域账号验证】工具核对，或让域管理员补全 AD 的 mail/mobile 属性。</div>
+                </div>
+
+                <!-- ================= 6 配置 ================= -->
+                <div class="card" id="c6">
+                    <h2>6️⃣ 配置项说明（backend/.env）</h2>
+                    <p>修改 .env 后需重启服务生效。文件含密钥，已在 .gitignore 中，<b>切勿提交到代码库</b>。</p>
+                    <table>
+                        <tr><th>配置项</th><th>默认</th><th>说明</th></tr>
+                        <tr><td><code>SECRET_KEY</code></td><td>必填</td><td>Flask 会话签名密钥（部署脚本自动生成随机值）</td></tr>
+                        <tr><td><code>DATABASE_URL</code></td><td>必填</td><td>默认 SQLite（<code>sqlite:///ad_password.db</code>），可换 PostgreSQL</td></tr>
+                        <tr><td><code>SECRET_ENCRYPTION_KEY</code></td><td>必填</td><td>Fernet 密钥，用于加密 AD/短信凭据；<b>丢失则已存凭据全部无法解密，需重新录入</b></td></tr>
+                        <tr><td><code>DEMO_MODE</code></td><td>false</td><td>演示模式；<b>生产必须 false</b></td></tr>
+                        <tr><td><code>ADMIN_PASSWORD</code></td><td>admin</td><td>仅首次建号时使用的初始口令</td></tr>
+                        <tr><td><code>HTTPS_ENABLED</code></td><td>false</td><td>false=HTTP 与 WAF HTTPS 双模式；true=纯 HTTPS（Cookie 仅加密传输）</td></tr>
+                        <tr><td><code>SESSION_TIMEOUT</code></td><td>8</td><td>管理员会话超时（小时）</td></tr>
+                        <tr><td><code>ADMIN_ALLOWED_IPS</code></td><td>空</td><td>/login 与 /admin/* 的 IP 白名单，支持 CIDR，逗号分隔（如 <code>10.0.0.0/8,192.168.1.0/24</code>）；<b>留空=不限制</b></td></tr>
+                        <tr><td><code>PASSWORD_MIN_LENGTH</code> 等</td><td>8/全开</td><td>新密码策略：最小长度、是否要求大小写/数字/特殊字符</td></tr>
+                        <tr><td><code>SMS_ASYNC_SEND</code></td><td>true</td><td>短信异步发送（抹平响应时序差；调试时可关）</td></tr>
+                        <tr><td><code>LOG_LEVEL / LOG_FILE</code></td><td>INFO / logs/app.log</td><td>日志级别与路径；单文件 10MB 轮转保留 5 份</td></tr>
+                    </table>
+                </div>
+
+                <!-- ================= 7 安全机制 ================= -->
+                <div class="card" id="c7">
+                    <h2>7️⃣ 安全与限流机制</h2>
+                    <h3>7.1 限流与锁定（达到阈值自动触发，到期自动解除）</h3>
+                    <table>
+                        <tr><th>维度</th><th>规则</th></tr>
+                        <tr><td>同一手机号</td><td>60 秒冷却 + 每小时最多 5 条验证码</td></tr>
+                        <tr><td>同一邮箱</td><td>每小时最多 5 次发码</td></tr>
+                        <tr><td>同一 IP</td><td>每小时最多 20 次发码</td></tr>
+                        <tr><td>身份校验失败</td><td>同一 IP 连续失败 10 次 → 锁定 30 分钟（防账号枚举）</td></tr>
+                        <tr><td>管理员登录失败</td><td>同一 IP 失败 5 次 → 锁定 15 分钟（防暴力破解），成功后计数清零</td></tr>
+                        <tr><td>验证码</td><td>5 分钟有效；输错 5 次作废需重发</td></tr>
+                        <tr><td>重置会话</td><td>10 分钟超时；一次性授权；重置目标仅取自服务端会话，请求无法越权指定</td></tr>
+                    </table>
+                    <p class="footer-note" style="text-align:left;">身份校验通过后失败计数自动清零。所有计数使用数据库原子行锁实现，多 worker 并发下依然准确。</p>
+                    <h3>7.2 数据与传输保护</h3>
+                    <ul>
+                        <li>AD 管理员密码、阿里云 Secret 使用 Fernet 加密入库，接口永不回传明文；</li>
+                        <li>AD 改密默认 389 端口 STARTTLS 加密（或 636 LDAPS）；改密后用新密码做 LDAP 绑定二次验证确保生效；</li>
+                        <li>LDAP 过滤器转义防注入、ORM 防 SQL 注入、Jinja 自动转义防 XSS；</li>
+                        <li>全部 POST 接口受 CSRF 保护；Session Cookie HttpOnly + SameSite=Lax；</li>
+                        <li>安全响应头（隐藏 Server 版本、CSP、HSTS、防点击劫持等）；反向代理下取真实客户端 IP 用于限流。</li>
+                    </ul>
+                </div>
+
+                <!-- ================= 8 巡检备份 ================= -->
+                <div class="card" id="c8">
+                    <h2>8️⃣ 日常巡检与备份</h2>
+                    <h3>8.1 建议巡检频率</h3>
+                    <table>
+                        <tr><th>频率</th><th>项目</th><th>方法</th></tr>
+                        <tr><td>每天</td><td>服务存活</td><td><code>curl http://127.0.0.1:5000/health</code> 或监控探针</td></tr>
+                        <tr><td>每天</td><td>错误日志</td><td>后台【操作日志】筛"重置失败/短信发送失败"；或 <code>grep ERROR backend/logs/app.log</code></td></tr>
+                        <tr><td>每周</td><td>域连通性</td><td>后台域配置页点【测试连接】+【员工域账号验证】</td></tr>
+                        <tr><td>每周</td><td>磁盘与日志体积</td><td>日志已自动轮转；必要时清理 <code>logs/</code> 旧文件</td></tr>
+                        <tr><td>变更时</td><td>配置备份</td><td>修改 .env / 域配置 / 短信配置前先备份数据库（见下）</td></tr>
+                    </table>
+                    <h3>8.2 数据库备份</h3>
+                    <pre><code># SQLite（默认）：项目根目录执行，备份到 backups/ 目录
+python scripts/backup_database.py
+
+# PostgreSQL：使用 pg_dump
+pg_dump -U user -h host dbname &gt; backup_$(date +%Y%m%d).sql</code></pre>
+                    <p>库内主要是：管理员账号、域配置（凭据密文）、短信配置（密文）、审计日志、限流计数。<b>用户密码不在本系统存储。</b></p>
+                    <h3>8.3 系统自检</h3>
+                    <pre><code>python scripts/health_check.py   # 检查数据库连接、管理员账号、域配置等</code></pre>
+                </div>
+
+                <!-- ================= 9 FAQ ================= -->
+                <div class="card" id="c9">
+                    <h2>9️⃣ 常见问题排查（FAQ）</h2>
+
+                    <details>
+                        <summary>域配置"测试连接"失败？</summary>
+                        <div class="answer">依次检查：① LDAP 主机 IP/域名与端口（389 或 636）是否可达（<code>telnet dc_IP 389</code>）；② Base DN / 管理员 DN 是否拼对（页面填域名可自动生成）；③ 管理员密码是否正确/未过期；④ 账号是否被锁定。页面提示会带具体错误信息，也可查 <code>backend/logs/app.log</code>。</div>
+                    </details>
+                    <details>
+                        <summary>改密时报"STARTTLS 失败 / 域控未装证书"？</summary>
+                        <div class="answer">系统默认在 389 端口自动升级 STARTTLS 加密后改密，要求域控安装了计算机证书（AD CS 自动注册或手工导入）。解决办法：给域控安装证书；或域配置页勾选"启用 LDAPS"改走 636 端口。</div>
+                    </details>
+                    <details>
+                        <summary>用户设置新密码总提示不符合策略？</summary>
+                        <div class="answer">默认策略：至少 8 位 + 大写 + 小写 + 数字 + 特殊字符，且<b>不能包含用户名</b>（AD 域策略还会要求密码不含用户名/姓名片段、受"最短密码期限"限制）。请引导用户换一个全新的密码。注意：<b>重置成功后短期内不要反复重试改密</b>，AD 有最短密码期限制。</div>
+                    </details>
+                    <details>
+                        <summary>用户说收不到验证码短信？</summary>
+                        <div class="answer">① 后台【短信配置】→ 发送测试到自己手机，确认阿里云配置与签名/模板有效；② 查【操作日志】筛"短信发送失败"看具体错误；③ 确认未触发限流（同手机 60 秒冷却、每小时 5 条）；④ 确认 AD 里的手机号与用户输入一致（11 位、无多余字符）。</div>
+                    </details>
+                    <details>
+                        <summary>第一步就提示"邮箱或手机号与域控登记信息不匹配"？</summary>
+                        <div class="answer">系统要求两者与 AD 的 mail / mobile 属性<b>完全一致</b>才放行。用后台【员工域账号验证】验证该员工账号，或让域管理员核对/补全 AD 属性。为防账号枚举，系统不会提示具体是哪一项不对。</div>
+                    </details>
+                    <details>
+                        <summary>管理员忘记后台登录密码怎么办？</summary>
+                        <div class="answer">admin 在保护名单内，<b>不能</b>走公开重置流程。在服务器上执行：<pre style="margin:8px 0 0;"><code>cd backend &amp;&amp; python init_admin_password.py</code></pre>密码将被重置为 <code>admin</code>，登录后<b>立即</b>到【修改密码】页改成强口令。</div>
+                    </details>
+                    <details>
+                        <summary>管理员登录页打不开 / 403 禁止访问？</summary>
+                        <div class="answer">若 .env 配置了 <code>ADMIN_ALLOWED_IPS</code> 白名单，/login 与 /admin/* 只允许名单内 IP/CIDR 访问。请确认访问出口 IP 在名单内，或让运维把对应网段加入白名单后重启服务。<code>/reset</code> 不受此限制。</div>
+                    </details>
+                    <details>
+                        <summary>IP 被锁定了怎么办？</summary>
+                        <div class="answer">身份校验连续失败 10 次锁 30 分钟；管理员登录失败 5 次锁 15 分钟。属自动防护、到期自动解除，无需处理。若确认是正常用户触发，告知等待锁定期结束即可。</div>
+                    </details>
+                    <details>
+                        <summary>重置成功了，但邮箱/M365 登录还是旧密码？</summary>
+                        <div class="answer">云服务密码由 Microsoft Entra Connect 自动同步，一般 <b>2-3 分钟</b>生效；个别情况取决于同步周期。域内登录（域电脑、VPN）立即生效。若长时间未同步请检查 Entra Connect 同步任务状态。</div>
+                    </details>
+                    <details>
+                        <summary>启动失败 / 端口被占用？</summary>
+                        <div class="answer">查看日志定位：<code>tail -100 backend/logs/app.log</code>。端口占用：<code>ss -tlnp | grep :5000</code>，可换端口启动：<code>SYSTEM_PORT=5001 bash deploy_linux.sh prod</code>。若 .env 手工编辑过，检查 SECRET_KEY / DATABASE_URL 是否为空（为空会拒绝启动）。</div>
+                    </details>
+                    <details>
+                        <summary>如何确认一次重置是否真的成功？</summary>
+                        <div class="answer">系统改密后会自动用<b>新密码做一次 LDAP 绑定验证</b>，确保密码确实生效；后台【操作日志】中"重置成功"事件可查（含脱敏手机号）。失败事件同样有记录与原因。</div>
+                    </details>
+                </div>
+
+                <!-- ================= 10 应急 ================= -->
+                <div class="card" id="c10">
+                    <h2>🔟 应急处理与升级注意</h2>
+                    <h3>10.1 应急速查</h3>
+                    <table>
+                        <tr><th>状况</th><th>处置</th></tr>
+                        <tr><td>服务无响应</td><td><code>bash deploy_linux.sh status</code> → 看日志 → 重启（重新跑 prod 脚本或 systemctl restart）</td></tr>
+                        <tr><td>域控换 IP/密码</td><td>后台【域配置】编辑并【测试连接】</td></tr>
+                        <tr><td>阿里云密钥泄露</td><td>阿里云控制台禁用旧 Key → 后台【短信配置】换新 Key → 发送测试</td></tr>
+                        <tr><td>怀疑账号被枚举攻击</td><td>【操作日志】筛"身份校验未通过"看来源 IP；IP 锁定机制会自动拦截，必要时防火墙封禁</td></tr>
+                        <tr><td>加密密钥（SECRET_ENCRYPTION_KEY）疑似泄露</td><td>换新密钥后需在后台重新录入域控与短信凭据（旧密文无法解密）</td></tr>
+                    </table>
+                    <h3>10.2 升级 / 代码更新</h3>
+                    <ol>
+                        <li>先备份数据库（见第 8 章）；</li>
+                        <li>拉取/部署新代码；</li>
+                        <li>若有数据库迁移 SQL（database/ 目录），先在库上执行；</li>
+                        <li>重启服务并 <code>curl /health</code> 验证；后台点【测试连接】复核域控连通。</li>
+                    </ol>
+                    <div class="danger">⛔ 红线事项：① 生产环境 DEMO_MODE 必须为 false；② 默认 admin/admin 口令必须首次登录即改；③ .env 与数据库备份文件含密钥/密文，不得外传或提交 git；④ 保护名单中的账号（域管/服务账号）密码变更一律线下流程，不得从名单移除后走自助重置。</div>
+                </div>
+
+                <div class="footer-note">
+                    华深智药 · 域账号密码自助重置系统 — 运维操作手册<br>
+                  以服务器上的实际部署配置为准；本页面仅登录后台后可见（Ctrl/Command + P 可打印为 PDF）。
+                </div>
+            </div>
+        </div>
     </body>
     </html>
     '''
