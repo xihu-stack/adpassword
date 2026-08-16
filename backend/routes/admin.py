@@ -591,6 +591,7 @@ def domains_page():
                         </div>
                     </div>
                     `;
+                });
 
                 container.innerHTML = html;
             }
