@@ -62,12 +62,14 @@ if [ ! -f .env ]; then
     FK=$($PY -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())")
     if [ "$MODE" = "prod" ]; then
         DB="${DATABASE_URL:-sqlite:///ad_password.db}"
+        # HTTPS_ENABLED / ADMIN_ALLOWED_IPS 可在部署时通过环境变量传入：
+        #   HTTPS_ENABLED=true ADMIN_ALLOWED_IPS=10.4.0.0/16 bash deploy_linux.sh prod
         cat > .env <<EOF
 SECRET_KEY=$SK
 SECRET_ENCRYPTION_KEY=$FK
 DATABASE_URL=$DB
 DEMO_MODE=false
-HTTPS_ENABLED=false
+HTTPS_ENABLED=${HTTPS_ENABLED:-false}
 SESSION_TIMEOUT=8
 CORS_ORIGINS=
 PASSWORD_MIN_LENGTH=8
@@ -75,7 +77,7 @@ PASSWORD_REQUIRE_UPPERCASE=true
 PASSWORD_REQUIRE_LOWERCASE=true
 PASSWORD_REQUIRE_NUMBER=true
 PASSWORD_REQUIRE_SPECIAL=true
-ADMIN_ALLOWED_IPS=
+ADMIN_ALLOWED_IPS=${ADMIN_ALLOWED_IPS:-}
 EOF
     else
         cat > .env <<EOF
