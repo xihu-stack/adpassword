@@ -194,6 +194,10 @@ def dashboard():
                     <div class="menu-icon">🛡️</div>
                     <div class="menu-title">保护名单</div>
                 </a>
+                <a href="/admin/security" class="menu-item">
+                    <div class="menu-icon">🔐</div>
+                    <div class="menu-title">访问控制</div>
+                </a>
                 <a href="/admin/change-password" class="menu-item">
                     <div class="menu-icon">🔑</div>
                     <div class="menu-title">修改密码</div>
@@ -1018,6 +1022,7 @@ def logs_page():
                         <option value="sms_send_failed">短信发送失败</option>
                         <option value="admin_password_change">管理员改密</option>
                         <option value="protected_list_update">保护名单更新</option>
+                        <option value="security_whitelist_update">访问白名单更新</option>
                         <option value="domain_create">域创建</option>
                         <option value="domain_update">域更新</option>
                         <option value="domain_delete">域删除</option>
@@ -1163,7 +1168,8 @@ def logs_page():
                     'domain_update': 'badge-system',
                     'domain_delete': 'badge-danger',
                     'sms_config': 'badge-system',
-                    'protected_list_update': 'badge-system'
+                    'protected_list_update': 'badge-system',
+                    'security_whitelist_update': 'badge-system'
                 };
                 return classes[action] || 'badge-system';
             }
@@ -1188,7 +1194,8 @@ def logs_page():
                     'domain_update': '域更新',
                     'domain_delete': '域删除',
                     'sms_config': '短信配置',
-                    'protected_list_update': '保护名单更新'
+                    'protected_list_update': '保护名单更新',
+                    'security_whitelist_update': '访问白名单更新'
                 };
                 return names[action] || action;
             }
@@ -2640,6 +2647,172 @@ def protected_page():
     return render_template_string(html, username=username)
 
 
+@admin_bp.route('/security')
+@admin_required
+def security_page():
+    """访问控制页面：在线维护管理后台 IP 白名单（即时生效，无需重启）"""
+    username = session.get('username', '管理员')
+    html = '''
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>访问控制 - 华深智药</title>
+        <style>
+            * { margin:0; padding:0; box-sizing:border-box; }
+            body { font-family:'Microsoft YaHei',Arial,sans-serif; background:#f5f7fa; }
+            .header { background:linear-gradient(135deg,#15376b 0%,#1f5fa8 100%); color:#fff; padding:20px 40px; display:flex; justify-content:space-between; align-items:center; }
+            .header h1 { font-size:22px; }
+            .logout-btn { background:rgba(255,255,255,.2); color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; text-decoration:none; }
+            .container { max-width:820px; margin:0 auto; padding:30px; }
+            .back-btn { display:inline-block; margin-bottom:20px; padding:8px 20px; background:#fff; color:#15376b; text-decoration:none; border-radius:4px; }
+            .card { background:#fff; border-radius:10px; padding:30px; box-shadow:0 2px 10px rgba(0,0,0,.05); margin-bottom:20px; }
+            .card h2 { color:#333; margin-bottom:8px; }
+            .desc { color:#666; font-size:13px; line-height:1.8; margin-bottom:16px; }
+            .info-row { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:#f8faff; border:1px solid #e6eef9; border-radius:6px; margin-bottom:10px; font-size:14px; }
+            .badge { padding:4px 12px; border-radius:20px; font-size:12px; }
+            .badge.ok { background:#67C23A; color:#fff; }
+            .badge.off { background:#909399; color:#fff; }
+            .mono { font-family:Consolas,monospace; word-break:break-all; }
+            textarea { width:100%; min-height:110px; padding:12px; border:1px solid #ddd; border-radius:6px; font-family:Consolas,monospace; font-size:13px; }
+            textarea:focus { outline:none; border-color:#1f5fa8; }
+            .save-bar { margin-top:16px; text-align:right; }
+            .save { padding:12px 28px; border:none; background:linear-gradient(135deg,#67C23A,#4CAF50); color:#fff; border-radius:6px; cursor:pointer; font-size:15px; font-weight:bold; }
+            .msg { font-size:13px; padding:11px 13px; border-radius:6px; margin-bottom:14px; display:none; word-break:break-all; }
+            .msg.ok { background:#f0f9eb; color:#67C23A; display:block; }
+            .msg.err { background:#fef0f0; color:#f56c6c; display:block; }
+            .tip { background:#fdf6ec; border-left:4px solid #E6A23C; padding:12px 16px; border-radius:0 6px 6px 0; font-size:12.5px; line-height:1.8; color:#8a6d3b; }
+        </style>
+    </head>
+    <body>
+<script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
+        <div class="header">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="华深智药" style="height:30px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.25));">
+                <h1>🔐 访问控制</h1>
+            </div>
+            <div>
+                <span style="margin-right:15px;">{{ username }}</span>
+                <a href="/logout" class="logout-btn">退出登录</a>
+            </div>
+        </div>
+        <div class="container">
+            <a href="/admin/dashboard" class="back-btn">← 返回管理后台</a>
+            <div class="card">
+                <h2>管理后台 IP 白名单</h2>
+                <p class="desc">限制 <b>/login 与 /admin/*</b> 的访问来源。支持单 IP 或网段（CIDR），逗号或换行分隔。<b>保存后即时生效，无需重启服务。</b>留空 = 不限制。</p>
+                <div class="msg" id="msg"></div>
+                <div class="info-row">
+                    <span>你当前的访问 IP</span>
+                    <span><b class="mono" id="curIp">-</b></span>
+                </div>
+                <div class="info-row">
+                    <span>.env 静态基线（只读）</span>
+                    <span class="mono" id="envList">-</span>
+                </div>
+                <label style="display:block;font-size:13px;font-weight:600;color:#333;margin:14px 0 8px;">动态白名单（本页面维护）</label>
+                <textarea id="ips" placeholder="例如：10.4.0.0/16&#10;192.168.1.100"></textarea>
+                <div class="save-bar">
+                    <button class="save" onclick="save()">💾 保存白名单</button>
+                </div>
+            </div>
+            <div class="tip">💡 说明：① 实际生效范围 = <b>.env 基线 + 本页动态名单的并集</b>（.env 基线是防锁死兜底，改本页不会移除它）；② 为防止把自己锁在外面，保存时新名单必须<b>包含你当前的 IP</b>，否则会被拒绝；③ 万一仍被锁（如办公网段变动），在服务器上把 <code>backend/.env</code> 的 <code>ADMIN_ALLOWED_IPS</code> 加入新网段并重启即可恢复。</div>
+        </div>
+        <script>
+            function show(m, cls){ const e=document.getElementById('msg'); e.textContent=m; e.className='msg '+(cls||''); }
+            async function load(){
+                try{
+                    const d = await (await fetch('/admin/api/admin-allowed-ips')).json();
+                    if(!d.success){ show('加载失败：'+(d.message||''),'err'); return; }
+                    document.getElementById('curIp').textContent = d.data.current_ip || '未知';
+                    document.getElementById('envList').textContent = (d.data.env && d.data.env.length) ? d.data.env.join(', ') : '未配置';
+                    document.getElementById('ips').value = (d.data.db || []).join('\\n');
+                }catch(e){ show('加载失败：'+e,'err'); }
+            }
+            async function save(){
+                const v = document.getElementById('ips').value.trim();
+                if(!confirm('确认保存白名单？留空表示不限制（所有 IP 可访问后台）')) return;
+                try{
+                    const r = await fetch('/admin/api/admin-allowed-ips', {
+                        method:'PUT', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({ips: v})
+                    });
+                    const d = await r.json();
+                    if(d.success){ show('已保存（共 '+(d.data||[]).length+' 项），即时生效','ok'); load(); }
+                    else { show(d.message||'保存失败','err'); }
+                }catch(e){ show('保存失败：'+e,'err'); }
+            }
+            load();
+        </script>
+    </body>
+    </html>
+    '''
+    return render_template_string(html, username=username)
+
+
+@admin_bp.route('/api/admin-allowed-ips', methods=['GET'])
+@admin_required
+def get_admin_allowed_ips():
+    """获取白名单配置（.env 基线 + 动态名单 + 当前 IP）"""
+    from models.models import SystemSetting
+    env_list = list(current_app.config.get('ADMIN_ALLOWED_IPS', []))
+    db_list = []
+    st = SystemSetting.query.filter_by(setting_key='admin_allowed_ips').first()
+    if st and st.setting_value:
+        db_list = [s.strip() for s in st.setting_value.split(',') if s.strip()]
+    return jsonify({'success': True, 'data': {
+        'env': env_list, 'db': db_list,
+        'current_ip': request.remote_addr or ''}})
+
+
+@admin_bp.route('/api/admin-allowed-ips', methods=['PUT'])
+@admin_required
+def update_admin_allowed_ips():
+    """保存动态白名单。校验语法 + 防自锁（新名单必须含当前 IP），并记审计。"""
+    from models.models import SystemSetting, db
+    from utils.logger import log_operation
+    from utils.decorators import _ip_in_lists
+    from ipaddress import ip_network
+
+    data = request.get_json(silent=True) or {}
+    raw = data.get('ips', '')
+    if isinstance(raw, list):
+        raw = ','.join(str(x) for x in raw)
+    items = [s.strip() for s in str(raw).replace('\n', ',').replace('，', ',').split(',') if s.strip()]
+
+    # 语法校验（重复项去重）
+    valid, seen = [], set()
+    for it in items:
+        entry = it if '/' in it else it + ('/128' if ':' in it else '/32')
+        try:
+            ip_network(entry, strict=False)
+        except ValueError:
+            return jsonify({'success': False,
+                            'message': '无效的 IP 或网段：%s（示例：10.4.0.0/16 或 192.168.1.100）' % it}), 400
+        if it not in seen:
+            seen.add(it)
+            valid.append(it)
+
+    # 防自锁：动态名单非空时，必须包含当前访问 IP（并集生效，含 .env 基线）
+    env_list = list(current_app.config.get('ADMIN_ALLOWED_IPS', []))
+    if valid and not _ip_in_lists(request.remote_addr or '', env_list + valid):
+        return jsonify({'success': False,
+                        'message': '新名单不包含你当前的 IP（%s），为防止把自己锁在外面已拒绝保存。请先把当前网段加入名单。' % (request.remote_addr or '未知')}), 400
+
+    st = SystemSetting.query.filter_by(setting_key='admin_allowed_ips').first()
+    if not st:
+        st = SystemSetting(setting_key='admin_allowed_ips', setting_type='string',
+                           description='管理后台动态 IP 白名单（与 .env 基线并集生效）')
+        db.session.add(st)
+    st.setting_value = ','.join(valid)
+    db.session.commit()
+
+    log_operation('security_whitelist_update',
+                  details='更新后台访问白名单：%s' % (','.join(valid) or '清空（不限制）'))
+    return jsonify({'success': True, 'data': valid})
+
+
 @admin_bp.route('/manual')
 @admin_required
 def manual_page():
@@ -2732,6 +2905,7 @@ def manual_page():
                     <a href="#c4-3">4.3 操作日志</a>
                     <a href="#c4-4">4.4 保护名单</a>
                     <a href="#c4-5">4.5 修改管理员密码</a>
+                    <a href="#c4-6">4.6 访问控制（IP 白名单）</a>
                 </div>
                 <a href="#c5">5. 用户自助重置流程</a>
                 <a href="#c6">6. 配置项说明（.env）</a>
@@ -2870,6 +3044,16 @@ ps aux | grep gunicorn                    # 查看进程</code></pre>
 
                     <h3 id="c4-5">4.5 🔑 修改密码（/admin/change-password）</h3>
                     <p>管理员修改自己的后台登录口令：需先输入当前密码验证；新密码至少 8 位且含大小写字母、数字、特殊字符。修改成功后下次登录使用新密码。</p>
+
+                    <h3 id="c4-6">4.6 🔐 访问控制（/admin/security）</h3>
+                    <p>在线维护管理后台 IP 白名单，<b>保存即时生效、无需重启</b>：</p>
+                    <ul>
+                        <li>限制范围：/login 与 /admin/*（/reset 公开页不受影响）；</li>
+                        <li>支持单 IP 和 CIDR 网段，逗号或换行分隔；留空 = 不限制；</li>
+                        <li>生效规则：<b>.env 基线 + 页面动态名单取并集</b>（.env 是防锁死兜底，页面无法移除它）；</li>
+                        <li>防自锁：保存时新名单必须包含<b>当前登录的 IP</b>，否则拒绝保存；</li>
+                        <li>每次变更记入操作日志（"访问白名单更新"），可在日志页筛选审计。</li>
+                    </ul>
                 </div>
 
                 <!-- ================= 5 用户流程 ================= -->
@@ -2906,7 +3090,7 @@ ps aux | grep gunicorn                    # 查看进程</code></pre>
                         <tr><td><code>ADMIN_PASSWORD</code></td><td>admin</td><td>仅首次建号时使用的初始口令</td></tr>
                         <tr><td><code>HTTPS_ENABLED</code></td><td>false</td><td>false=HTTP 与 WAF HTTPS 双模式；true=纯 HTTPS（Cookie 仅加密传输）</td></tr>
                         <tr><td><code>SESSION_TIMEOUT</code></td><td>8</td><td>管理员会话超时（小时）</td></tr>
-                        <tr><td><code>ADMIN_ALLOWED_IPS</code></td><td>空</td><td>/login 与 /admin/* 的 IP 白名单，支持 CIDR，逗号分隔（如 <code>10.0.0.0/8,192.168.1.0/24</code>）；<b>留空=不限制</b></td></tr>
+                        <tr><td><code>ADMIN_ALLOWED_IPS</code></td><td>空</td><td>/login 与 /admin/* 的 IP 白名单基线，支持 CIDR，逗号分隔；<b>也可在后台【🔐 访问控制】页在线维护（即时生效，与 .env 并集）</b>；两者都留空=不限制</td></tr>
                         <tr><td><code>LDAP_TLS_VALIDATE</code></td><td>false</td><td>是否校验域控 TLS 证书；域控证书由内部 CA 签发时可设 true（需配合下一项）</td></tr>
                         <tr><td><code>LDAP_CA_CERT</code></td><td>空</td><td>CA 证书文件路径，配合 <code>LDAP_TLS_VALIDATE=true</code> 启用强校验；默认不校验以兼容自签名证书</td></tr>
                         <tr><td><code>PASSWORD_MIN_LENGTH</code> 等</td><td>8/全开</td><td>新密码策略：最小长度、是否要求大小写/数字/特殊字符</td></tr>
@@ -2993,7 +3177,7 @@ pg_dump -U user -h host dbname &gt; backup_$(date +%Y%m%d).sql</code></pre>
                     </details>
                     <details>
                         <summary>管理员登录页打不开 / 403 禁止访问？</summary>
-                        <div class="answer">若 .env 配置了 <code>ADMIN_ALLOWED_IPS</code> 白名单，/login 与 /admin/* 只允许名单内 IP/CIDR 访问。请确认访问出口 IP 在名单内，或让运维把对应网段加入白名单后重启服务。<code>/reset</code> 不受此限制。</div>
+                        <div class="answer">IP 不在白名单内。白名单 = <b>.env 的 ADMIN_ALLOWED_IPS 基线 + 后台【🔐 访问控制】页的动态名单</b>（并集生效）。日常增删网段直接在访问控制页操作（即时生效、有防自锁保护）；若连管理员也被锁（如办公网段变动），在服务器 .env 的 ADMIN_ALLOWED_IPS 加入新网段后重启即可恢复。<code>/reset</code> 不受白名单限制。</div>
                     </details>
                     <details>
                         <summary>IP 被锁定了怎么办？</summary>

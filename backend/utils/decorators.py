@@ -3,22 +3,42 @@ from flask import session, redirect, url_for, jsonify, request, current_app
 from ipaddress import ip_address, ip_network
 
 
-def _ip_allowed():
-    """检查当前请求 IP 是否在管理员白名单内。留空=不限制。"""
-    allowed = current_app.config.get('ADMIN_ALLOWED_IPS', [])
-    if not allowed:
-        return True  # 未配置白名单 = 不限制
-    client = request.remote_addr or ''
+def _effective_allowed_ips():
+    """生效的管理员 IP 白名单 = .env 静态基线 + 后台【访问控制】页动态配置（并集）。
+    动态配置存 SystemSetting(admin_allowed_ips)，保存后即时生效、无需重启。"""
+    allowed = list(current_app.config.get('ADMIN_ALLOWED_IPS', []))
+    try:
+        from models.models import SystemSetting
+        st = SystemSetting.query.filter_by(setting_key='admin_allowed_ips').first()
+        if st and st.setting_value:
+            allowed += [s.strip() for s in st.setting_value.split(',') if s.strip()]
+    except Exception:
+        pass  # 数据库异常时退回 .env 基线
+    return allowed
+
+
+def _ip_in_lists(client, cidrs):
+    """判断 IP 是否落在任一 网段/单IP 条目内。"""
     try:
         client_ip = ip_address(client)
-        for cidr in allowed:
-            if '/' not in cidr:
-                cidr = cidr + '/32'
-            if client_ip in ip_network(cidr, strict=False):
+    except ValueError:
+        return False
+    for cidr in cidrs:
+        entry = cidr if '/' in cidr else cidr + ('/128' if ':' in cidr else '/32')
+        try:
+            if client_ip in ip_network(entry, strict=False):
                 return True
-    except Exception:
-        pass
+        except ValueError:
+            continue
     return False
+
+
+def _ip_allowed():
+    """检查当前请求 IP 是否在管理员白名单内。留空=不限制。"""
+    allowed = _effective_allowed_ips()
+    if not allowed:
+        return True  # 未配置白名单 = 不限制
+    return _ip_in_lists(request.remote_addr or '', allowed)
 
 
 def internal_only(f):
