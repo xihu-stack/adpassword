@@ -6,6 +6,26 @@ from datetime import datetime
 admin_bp = Blueprint('admin', __name__)
 
 
+def _alert_back(message):
+    """返回 alert+返回上一页 的响应；消息经 JSON 编码，防 JS/HTML 注入。"""
+    import json
+    safe = json.dumps(str(message), ensure_ascii=False).replace('<', '\\u003c')
+    return '<script>alert(%s); window.history.back();</script>' % safe
+
+
+def _domain_bind_password(domain):
+    """取域控绑定密码。返回 (password, None) 或 (None, 错误消息)。
+    解密失败（密钥变更/丢失）时给出明确指引，避免误判为密码错误。"""
+    from services.ldap_service import secret_decrypt
+    raw = domain.ldap_password or domain.admin_password
+    if not raw:
+        return None, '域控管理员密码未配置，请先在域配置中录入'
+    try:
+        return secret_decrypt(raw), None
+    except RuntimeError as e:
+        return None, str(e)
+
+
 @admin_bp.route('/dashboard')
 @admin_required
 def dashboard():
@@ -372,11 +392,11 @@ def domains_page():
                         <div style="margin-bottom: 15px;">
                             <label style="display: block; margin-bottom: 5px; font-weight: bold;">LDAP 端口</label>
                             <input type="number" name="ldap_port" id="ldap_port" value="389" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-                            <div style="margin-top: 12px;">
-                                <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                    <input type="checkbox" id="use_ssl" onchange="onSSLChanged()" style="width: 16px; height: 16px; cursor: pointer;">
-                                    <span>🔒 启用 LDAPS (SSL 加密连接)</span>
-                                </label>
+                                    <div style="margin-top: 12px;">
+                                        <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                            <input type="checkbox" id="use_ssl" name="use_ssl" onchange="onSSLChanged()" style="width: 16px; height: 16px; cursor: pointer;">
+                                            <span>🔒 启用 LDAPS (SSL 加密连接)</span>
+                                        </label>
                                 <small style="color: #999; display: block; margin-top: 5px;">启用后会自动切换到 LDAPS 端口（636），需要服务器支持 SSL。普通 LDAP 端口：389，LDAPS 端口：636</small>
                             </div>
                         </div>
@@ -518,25 +538,26 @@ def domains_page():
                     });
             }
             
-            // 渲染域配置列表
+            // 渲染域配置列表（字段为管理员录入，渲染前统一转义）
+            function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
             function renderDomainList(domains) {
                 const container = document.getElementById('domainsContainer');
                 let html = '';
-                
+
                 domains.forEach(domain => {
                     const isConnected = domain.is_connected || false;
                     const statusColor = isConnected ? '#67C23A' : '#F56C6C';
                     const statusText = isConnected ? '连接成功' : '连接失败';
                     const statusIcon = isConnected ? '✅' : '❌';
-                    
+
                     html += `
                     <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 15px; background: #fafafa;">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
                             <div style="display: flex; gap: 15px;">
                                 <div style="font-size: 32px;">🌐</div>
                                 <div>
-                                    <h4 style="margin: 0 0 5px 0; color: #333; font-size: 16px;">${domain.name}</h4>
-                                    <p style="margin: 0; color: #666; font-size: 14px;">${domain.ldap_host}:${domain.ldap_port}</p>
+                                    <h4 style="margin: 0 0 5px 0; color: #333; font-size: 16px;">${esc(domain.name)}</h4>
+                                    <p style="margin: 0; color: #666; font-size: 14px;">${esc(domain.ldap_hosts || domain.ldap_host)}:${esc(domain.ldap_port)}</p>
                                 </div>
                             </div>
                             <div style="display: flex; gap: 10px; align-items: center;">
@@ -551,15 +572,15 @@ def domains_page():
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; font-size: 14px; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
                             <div>
                                 <span style="color: #999;">基础 DN:</span>
-                                <span style="color: #333; margin-left: 10px;">${domain.base_dn}</span>
+                                <span style="color: #333; margin-left: 10px;">${esc(domain.base_dn)}</span>
                             </div>
                             <div>
                                 <span style="color: #999;">管理员 DN:</span>
-                                <span style="color: #333; margin-left: 10px;">${domain.admin_dn || '-'}</span>
+                                <span style="color: #333; margin-left: 10px;">${esc(domain.admin_dn || '-')}</span>
                             </div>
                             <div>
                                 <span style="color: #999;">创建时间:</span>
-                                <span style="color: #333; margin-left: 10px;">${domain.created_at || '-'}</span>
+                                <span style="color: #333; margin-left: 10px;">${esc(domain.created_at || '-')}</span>
                             </div>
                             <div>
                                 <span style="color: #999;">状态:</span>
@@ -570,8 +591,7 @@ def domains_page():
                         </div>
                     </div>
                     `;
-                });
-                
+
                 container.innerHTML = html;
             }
             
@@ -1091,9 +1111,12 @@ def logs_page():
             };
             
             // 渲染日志表格
+            // 安全：target_user/details 来自不可信输入（公开重置页的邮箱等），
+            // innerHTML 渲染前必须转义，否则构成存储型 XSS
+            function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
             function renderLogs(logs, total, pages, page) {
                 const tbody = document.getElementById('logsTableBody');
-                
+
                 if (!logs || logs.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 40px; color: #999;">暂无日志记录</td></tr>';
                 } else {
@@ -1103,12 +1126,12 @@ def logs_page():
                         const time = new Date(log.created_at).toLocaleString('zh-CN');
                         html += `
                             <tr>
-                                <td>${time}</td>
-                                <td>${log.admin_username || '-'}</td>
-                                <td><span class="badge ${badgeClass}">${formatAction(log.action)}</span></td>
-                                <td>${log.target_user || '-'}</td>
-                                <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${log.details || '-'}</td>
-                                <td>${log.ip_address || '-'}</td>
+                                <td>${esc(time)}</td>
+                                <td>${esc(log.admin_username || '-')}</td>
+                                <td><span class="badge ${badgeClass}">${esc(formatAction(log.action))}</span></td>
+                                <td>${esc(log.target_user || '-')}</td>
+                                <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(log.details || '-')}</td>
+                                <td>${esc(log.ip_address || '-')}</td>
                             </tr>
                         `;
                     });
@@ -1630,7 +1653,8 @@ def update_domain_page(domain_id):
         base_dn = request.form.get('base_dn')
         admin_dn = request.form.get('admin_dn')
         admin_password = request.form.get('admin_password')  # LDAP 密码
-        use_ssl = request.form.get('use_ssl', 'false').lower() == 'true'
+        # checkbox 勾选时提交 "on"、未勾选不提交——必须用 bool() 判断
+        use_ssl = bool(request.form.get('use_ssl'))
         
         # 优先使用 ldap_hosts，如果没有则使用 ldap_host
         if not ldap_hosts:
@@ -1638,13 +1662,8 @@ def update_domain_page(domain_id):
         
         # 验证必填字段
         if not all([name, ldap_hosts, base_dn, admin_dn]):
-            return '''
-            <script>
-                alert('请填写所有必填字段！');
-                window.history.back();
-            </script>
-            '''
-        
+            return _alert_back('请填写所有必填字段！')
+
         # 更新域配置
         domain.name = name
         domain.ldap_hosts = ldap_hosts  # 新字段：多主机
@@ -1653,7 +1672,7 @@ def update_domain_page(domain_id):
         domain.base_dn = base_dn
         domain.admin_dn = admin_dn
         domain.use_ssl = use_ssl
-        
+
         # 如果提供了 LDAP 密码，则更新（加密存储）
         if admin_password:
             domain.set_ldap_password(admin_password)
@@ -1664,28 +1683,23 @@ def update_domain_page(domain_id):
             pass  # 保持原密码不变
         elif not admin_password and not domain.ldap_password:
             # 都没有，报错
-            return '''
-            <script>
-                alert('首次配置必须输入 LDAP 管理员密码！');
-                window.history.back();
-            </script>
-            '''
-        
+            return _alert_back('首次配置必须输入 LDAP 管理员密码！')
+
         # 保存到数据库
         db.session.commit()
-        
+
+        # 审计（不记录密码）
+        from utils.logger import log_operation
+        log_operation('domain_update', target_user=name,
+                      details='更新域配置：%s（%s，SSL=%s）' % (name, ldap_hosts, use_ssl))
+
         # 重定向到域列表页面
         from flask import redirect, url_for
         return redirect(url_for('admin.domains_page'))
-        
+
     except Exception as e:
         db.session.rollback()
-        return f'''
-        <script>
-            alert('保存失败：{str(e)}');
-            window.history.back();
-        </script>
-        '''
+        return _alert_back('保存失败：%s' % e)
 
 
 # ==================== API 路由 ====================
@@ -1724,77 +1738,6 @@ def get_domains_list():
         })
 
 
-@admin_bp.route('/api/admin/domains/test', methods=['POST'])
-@admin_required
-def test_domain_connection_live(domain_id):
-    """测试域配置连接 - 支持实时测试（使用前端传来的密码）"""
-    from models.models import Domain, db
-    import logging
-    
-    try:
-        data = request.get_json()
-        
-        # 记录接收到的数据
-        logging.info(f'[测试连接 API] 接收到数据：{data}')
-        
-        # 优先使用前端传来的配置，否则从数据库读取
-        if data:
-            # 使用前端传来的配置
-            config = {
-                'ldap_hosts': data.get('ldap_hosts'),
-                'ldap_host': data.get('ldap_host'),
-                'ldap_port': data.get('ldap_port'),
-                'ldaps_port': data.get('ldaps_port'),
-                'base_dn': data.get('base_dn'),
-                'admin_dn': data.get('admin_dn'),
-                'admin_password': data.get('admin_password', ''),
-                'use_ssl': data.get('use_ssl', False)
-            }
-            logging.info(f'[测试连接 API] 使用前端配置：use_ssl={config["use_ssl"]}, ldap_port={config["ldap_port"]}')
-        else:
-            # 从数据库读取
-            domain = Domain.query.get(domain_id)
-            if not domain:
-                return jsonify({
-                    'success': False,
-                    'message': '域配置不存在'
-                }), 404
-            
-            config = {
-                'ldap_host': domain.ldap_host,
-                'ldap_port': domain.ldap_port,
-                'ldaps_port': domain.ldaps_port,
-                'base_dn': domain.base_dn,
-                'admin_dn': domain.admin_dn,
-                'admin_password': domain.ldap_password_plain or domain.admin_password_plain,
-                'use_ssl': domain.use_ssl
-            }
-            logging.info(f'[测试连接 API] 使用数据库配置：use_ssl={config["use_ssl"]}, ldap_port={config["ldap_port"]}')
-        
-        # 使用 LDAP 服务测试连接
-        from services.ldap_service import LdapService
-        
-        # 测试连接
-        result, message = LdapService.test_connection(config)
-        
-        if result:
-            return jsonify({
-                'success': True,
-                'message': message
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': message
-            }), 200
-            
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'测试失败：{str(e)}'
-        }), 200
-
-
 @admin_bp.route('/api/admin/domains/<int:domain_id>/test', methods=['POST'])
 @admin_required
 def test_domain_connection(domain_id):
@@ -1811,15 +1754,20 @@ def test_domain_connection(domain_id):
         
         # 使用 LDAP 服务测试连接
         from services.ldap_service import LdapService
-        
+
+        bind_pwd, pwd_err = _domain_bind_password(domain)
+        if pwd_err:
+            return jsonify({'success': False, 'message': pwd_err}), 200
+
         # 测试连接（传入字典参数）
         result, message = LdapService.test_connection({
+            'ldap_hosts': domain.ldap_hosts,
             'ldap_host': domain.ldap_host,
             'ldap_port': domain.ldap_port,
             'ldaps_port': domain.ldaps_port,
             'base_dn': domain.base_dn,
             'admin_dn': domain.admin_dn,
-            'admin_password': domain.ldap_password_plain or domain.admin_password_plain,  # 优先使用 ldap_password
+            'admin_password': bind_pwd,
             'use_ssl': domain.use_ssl
         })
         
@@ -1870,10 +1818,9 @@ def diagnose_domain_connection(domain_id):
             }), 404
         
         # 导入诊断工具
-        from services.ldap_service import LdapService
-        from ldap3 import Server, Connection, SIMPLE, ALL, Tls
-        import ssl
-        
+        from services.ldap_service import build_tls_context
+        from ldap3 import Server, Connection, SIMPLE, ALL
+
         diagnosis_result = {
             'success': False,
             'ldap_port_status': False,
@@ -1883,6 +1830,13 @@ def diagnose_domain_connection(domain_id):
             'issues': [],
             'suggestions': []
         }
+
+        # 凭据解密失败时直接给出明确指引（否则会误判为连接问题）
+        bind_pwd, pwd_err = _domain_bind_password(domain)
+        if pwd_err:
+            diagnosis_result['issues'].append(pwd_err)
+            diagnosis_result['suggestions'].append('在管理后台重新录入域控管理员密码')
+            return jsonify(diagnosis_result)
         
         # 1. 测试端口连通性
         import socket
@@ -1900,23 +1854,24 @@ def diagnose_domain_connection(domain_id):
         diagnosis_result['ldap_port_status'] = test_port(domain.ldap_host, domain.ldap_port or 389)
         diagnosis_result['ldaps_port_status'] = test_port(domain.ldap_host, domain.ldaps_port or 636)
         
-        # 2. 测试 LDAP 连接
+        # 2. 测试 LDAP 连接（389 先升级 STARTTLS 再绑定，避免凭据明文传输）
         try:
-            server = Server(f"ldap://{domain.ldap_host}:{domain.ldap_port or 389}", get_info=ALL, connect_timeout=10)
-            conn = Connection(server, user=domain.admin_dn, password=domain.ldap_password_plain, authentication=SIMPLE, auto_bind=False)
-            
+            server = Server(f"ldap://{domain.ldap_host}:{domain.ldap_port or 389}", get_info=ALL, tls=build_tls_context(), connect_timeout=10)
+            conn = Connection(server, user=domain.admin_dn, password=bind_pwd, authentication=SIMPLE, auto_bind=False)
+            conn.open()
+            conn.start_tls()
+
             if conn.bind():
                 diagnosis_result['ldap_connection'] = True
                 conn.unbind()
         except Exception as e:
             pass
-        
+
         # 3. 测试 LDAPS 连接
         try:
-            tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT, ciphers='ALL:@SECLEVEL=0')
-            server = Server(f"ldaps://{domain.ldap_host}:{domain.ldaps_port or 636}", get_info=ALL, tls=tls_context, connect_timeout=10)
-            conn = Connection(server, user=domain.admin_dn, password=domain.ldap_password_plain, authentication=SIMPLE, auto_bind=False)
-            
+            server = Server(f"ldaps://{domain.ldap_host}:{domain.ldaps_port or 636}", get_info=ALL, tls=build_tls_context(), connect_timeout=10)
+            conn = Connection(server, user=domain.admin_dn, password=bind_pwd, authentication=SIMPLE, auto_bind=False)
+
             if conn.bind():
                 diagnosis_result['ldaps_connection'] = True
                 conn.unbind()
@@ -1984,7 +1939,12 @@ def delete_domain(domain_id):
         
         db.session.delete(domain)
         db.session.commit()
-        
+
+        # 审计：删除域配置属破坏性操作，必须留痕
+        from utils.logger import log_operation
+        log_operation('domain_delete', target_user=domain.name,
+                      details='删除域配置：%s（%s）' % (domain.name, domain.ldap_hosts or domain.ldap_host))
+
         return jsonify({
             'success': True,
             'message': '删除成功'
@@ -1995,19 +1955,6 @@ def delete_domain(domain_id):
             'success': False,
             'message': f'删除失败：{str(e)}'
         }), 500
-
-
-@admin_bp.route('/api/admin/domains', methods=['GET'])
-@login_required
-def get_domains():
-    """获取所有域配置"""
-    if session.get('user_role') != 'admin':
-        return jsonify({'success': False, 'message': '权限不足'}), 403
-    
-    return jsonify({
-        'success': True,
-        'data': []
-    })
 
 
 @admin_bp.route('/domains', methods=['POST'])
@@ -2028,13 +1975,8 @@ def create_domain_html():
         
         # 验证必填字段
         if not all([name, ldap_host, base_dn, admin_dn, admin_password]):
-            return '''
-            <script>
-                alert('请填写所有必填字段！');
-                window.history.back();
-            </script>
-            '''
-        
+            return _alert_back('请填写所有必填字段！')
+
         # 创建域配置对象
         domain = Domain(
             name=name,
@@ -2046,27 +1988,28 @@ def create_domain_html():
             use_ssl=bool(request.form.get('use_ssl')),
             is_active=True
         )
-        
+
         # 保存密码 (加密存储，LDAP 连接时按需解密)
         domain.set_admin_password(admin_password)
         domain.set_ldap_password(admin_password)
-        
+
         # 保存到数据库
         db.session.add(domain)
         db.session.commit()
-        
+
+        # 审计（不记录密码）
+        from utils.logger import log_operation
+        log_operation('domain_create', target_user=name,
+                      details='添加域配置：%s（%s:%s，SSL=%s）' % (name, ldap_host, ldap_port,
+                                                                bool(request.form.get('use_ssl'))))
+
         # 重定向到域列表页面
         from flask import redirect, url_for
         return redirect(url_for('admin.domains_page'))
-        
+
     except Exception as e:
         db.session.rollback()
-        return f'''
-        <script>
-            alert('保存失败：{str(e)}');
-            window.history.back();
-        </script>
-        '''
+        return _alert_back('保存失败：%s' % e)
 
 
 @admin_bp.route('/domains/test-connection', methods=['POST'])
@@ -2156,10 +2099,15 @@ def create_domain():
         # 保存到数据库
         db.session.add(domain)
         db.session.commit()
-        
+
+        from utils.logger import log_operation
+        log_operation('domain_create', target_user=data['name'],
+                      details='添加域配置(API)：%s（%s，SSL=%s）' % (data['name'], data['ldap_host'],
+                                                                   data.get('use_ssl', False)))
+
         return jsonify({
-            'success': True, 
-            'message': '域配置创建成功', 
+            'success': True,
+            'message': '域配置创建成功',
             'data': {
                 'id': domain.id,
                 'name': domain.name,
@@ -2222,12 +2170,12 @@ def update_domain(domain_id):
     
     # 提交更改
     db.session.commit()
-    
-    print(f'[域配置更新] 域 {domain.name} 配置已更新')
-    print(f'  ldap_hosts: {domain.ldap_hosts}')
-    print(f'  use_ssl: {domain.use_ssl}')
-    print(f'  ldap_port: {domain.ldap_port}')
-    
+
+    from utils.logger import log_operation
+    log_operation('domain_update', target_user=domain.name,
+                  details='更新域配置(API)：%s（%s，SSL=%s）' % (domain.name, domain.ldap_hosts or domain.ldap_host,
+                                                                domain.use_ssl))
+
     return jsonify({'success': True, 'message': '域配置更新成功'})
 
 
@@ -2341,8 +2289,8 @@ def send_test_sms():
     try:
         # 发送测试短信
         sms = SmsService(config)
-        import random
-        code = str(random.randint(100000, 999999))
+        import secrets
+        code = '%06d' % secrets.randbelow(1000000)
 
         ok, msg = sms.send_verification_code(phone, code)
 
@@ -2363,52 +2311,56 @@ def send_test_sms():
 def get_admin_logs():
     """获取管理日志"""
     from models.models import AdminLog, User, db
-    
+    from sqlalchemy.orm import joinedload
+    from datetime import datetime, timedelta
+
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     action_filter = request.args.get('action', '')
     username_filter = request.args.get('username', '')
     date_filter = request.args.get('date', '')
-    
-    # 构建查询
-    query = AdminLog.query
-    
+
+    # 构建查询（joinedload 预取管理员用户名，避免逐行 N+1）
+    query = AdminLog.query.options(joinedload(AdminLog.admin))
+
     if action_filter:
         query = query.filter(AdminLog.action == action_filter)
-    
+
     if username_filter:
-        query = query.join(User).filter(User.username.like(f'%{username_filter}%'))
-    
+        # outerjoin 保留 admin_id 为空的公开事件（重置/身份校验等），
+        # 同时匹配操作管理员与目标用户
+        like = '%{}%'.format(username_filter)
+        query = (query.outerjoin(User, AdminLog.admin_id == User.id)
+                 .filter(db.or_(User.username.ilike(like), AdminLog.target_user.ilike(like))))
+
     if date_filter:
-        from datetime import datetime
         try:
             date_obj = datetime.strptime(date_filter, '%Y-%m-%d')
-            query = query.filter(
-                AdminLog.created_at >= date_obj,
-                AdminLog.created_at < date_obj.replace(day=date_obj.day+1) if date_obj.day < 28 else date_obj
-            )
-        except:
+            # +1 天而不是 replace(day=day+1)：原写法在每月 28-31 日会得到空区间
+            next_day = date_obj + timedelta(days=1)
+            query = query.filter(AdminLog.created_at >= date_obj,
+                                 AdminLog.created_at < next_day)
+        except ValueError:
             pass
-    
+
     # 分页排序
     pagination = query.order_by(AdminLog.created_at.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
-    
+
     logs = []
     for log in pagination.items:
-        admin_user = User.query.get(log.admin_id) if log.admin_id else None
         logs.append({
             'id': log.id,
             'admin_id': log.admin_id,
-            'admin_username': admin_user.username if admin_user else 'Unknown',
+            'admin_username': log.admin.username if log.admin else 'system',
             'action': log.action,
             'target_user': log.target_user,
             'details': log.details,
             'ip_address': log.ip_address,
             'created_at': log.created_at.isoformat() if log.created_at else None
         })
-    
+
     return jsonify({
         'success': True,
         'data': logs,
@@ -2458,6 +2410,11 @@ def verify_user_credentials():
     domain = Domain.query.filter_by(is_active=True).order_by(Domain.id).first()
     if not domain:
         return jsonify({'success': False, 'message': '未配置域，请先添加域配置'}), 400
+
+    # 凭据解密失败时给出明确指引（否则会误报为"未找到用户"）
+    _, pwd_err = _domain_bind_password(domain)
+    if pwd_err:
+        return jsonify({'success': False, 'message': pwd_err}), 200
 
     # 用管理员绑定查找用户
     user_info = LdapService.lookup_user_by_email(domain, email_or_username)
@@ -2949,6 +2906,8 @@ ps aux | grep gunicorn                    # 查看进程</code></pre>
                         <tr><td><code>HTTPS_ENABLED</code></td><td>false</td><td>false=HTTP 与 WAF HTTPS 双模式；true=纯 HTTPS（Cookie 仅加密传输）</td></tr>
                         <tr><td><code>SESSION_TIMEOUT</code></td><td>8</td><td>管理员会话超时（小时）</td></tr>
                         <tr><td><code>ADMIN_ALLOWED_IPS</code></td><td>空</td><td>/login 与 /admin/* 的 IP 白名单，支持 CIDR，逗号分隔（如 <code>10.0.0.0/8,192.168.1.0/24</code>）；<b>留空=不限制</b></td></tr>
+                        <tr><td><code>LDAP_TLS_VALIDATE</code></td><td>false</td><td>是否校验域控 TLS 证书；域控证书由内部 CA 签发时可设 true（需配合下一项）</td></tr>
+                        <tr><td><code>LDAP_CA_CERT</code></td><td>空</td><td>CA 证书文件路径，配合 <code>LDAP_TLS_VALIDATE=true</code> 启用强校验；默认不校验以兼容自签名证书</td></tr>
                         <tr><td><code>PASSWORD_MIN_LENGTH</code> 等</td><td>8/全开</td><td>新密码策略：最小长度、是否要求大小写/数字/特殊字符</td></tr>
                         <tr><td><code>SMS_ASYNC_SEND</code></td><td>true</td><td>短信异步发送（抹平响应时序差；调试时可关）</td></tr>
                         <tr><td><code>LOG_LEVEL / LOG_FILE</code></td><td>INFO / logs/app.log</td><td>日志级别与路径；单文件 10MB 轮转保留 5 份</td></tr>

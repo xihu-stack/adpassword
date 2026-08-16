@@ -16,15 +16,42 @@ except ImportError:
     LDAP3_AVAILABLE = False
     print('[LDAP 服务] ldap3 库不可用，请安装：pip install ldap3')
 
-from models.models import User, Domain, db
-import bcrypt
+from models.models import Domain
+import os
 
 from services import secret_crypto as _sc
 
 
+def build_tls_context():
+    """构建 TLS 配置（LDAPS 与 STARTTLS 共用）。
+
+    默认不校验证书（CERT_NONE）：兼容域控自签名证书，域控侧无需任何改动。
+    若域控证书由内部 CA 签发，可在 .env 设置 LDAP_TLS_VALIDATE=true，
+    并用 LDAP_CA_CERT 指向 CA 证书文件，启用强校验并收紧加密套件。
+    """
+    if os.getenv('LDAP_TLS_VALIDATE', 'false').lower() == 'true':
+        kwargs = {'validate': ssl.CERT_REQUIRED, 'version': ssl.PROTOCOL_TLS_CLIENT}
+        ca = os.getenv('LDAP_CA_CERT', '').strip()
+        if ca:
+            kwargs['ca_certs_file'] = ca
+        return Tls(**kwargs)
+    return Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
+               ciphers='ALL:@SECLEVEL=0')  # 兼容旧域控
+
+
 def secret_decrypt(v):
-    """Decrypt a stored credential if encrypted, else return as-is (legacy plaintext)."""
-    return _sc.decrypt_value(v) if _sc.is_encrypted(v) else v
+    """解密存储的凭据；未加密（旧数据）原样返回。
+    解密失败（密钥变更/丢失）抛 RuntimeError——绝不能用空密码继续匿名绑定。"""
+    if v is None or v == '':
+        return v
+    if _sc.is_encrypted(v):
+        plain = _sc.decrypt_value(v)
+        if plain is None:
+            raise RuntimeError(
+                '凭据解密失败：SECRET_ENCRYPTION_KEY 与加密时不一致（或已丢失），'
+                '请在管理后台重新录入域控/短信密码')
+        return plain
+    return v
 
 
 class LdapService:
@@ -119,18 +146,9 @@ class LdapService:
                     server_url = f"{protocol}://{host}:{port}"
                     print(f'[LDAP 连接测试] 尝试连接（IP 格式）：{server_url}')
                 
-                # 创建服务器对象
-                # 对于 LDAPS，配置 TLS 以支持自签名证书
-                if protocol == 'ldaps':
-                    # 创建 TLS 配置，允许自签名证书
-                    tls_context = Tls(
-                        validate=ssl.CERT_NONE,  # 不验证证书（允许自签名）
-                        version=ssl.PROTOCOL_TLS_CLIENT,
-                        ciphers='ALL:@SECLEVEL=0'  # 降低安全级别以兼容旧服务器
-                    )
-                    server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10)
-                else:
-                    server = Server(server_url, get_info=ALL, connect_timeout=10)
+                # 创建服务器对象（TLS 配置统一走 build_tls_context；
+                # ldap:// 会在绑定前升级 STARTTLS，见下方认证逻辑）
+                server = Server(server_url, get_info=ALL, tls=build_tls_context(), connect_timeout=10)
                 
                 # 从 admin_dn 提取用户名
                 username = None
@@ -199,8 +217,16 @@ class LdapService:
                             user=attempt['user'],
                             password=domain_config['admin_password'],
                             authentication=attempt['auth'],
-                            auto_bind=True
+                            auto_bind=False
                         )
+                        conn.open()
+                        if protocol == 'ldap':
+                            # 389 端口先升级 STARTTLS 再绑定，避免管理员密码明文传输
+                            if not conn.start_tls():
+                                raise LDAPException('STARTTLS 失败（域控可能未安装证书），result=%s' % conn.result)
+                        conn.bind()
+                        if not conn.bound:
+                            raise LDAPException('绑定失败：%s' % conn.result)
                         
                         # 尝试搜索
                         result = conn.search(
@@ -337,25 +363,9 @@ class LdapService:
         """使用指定协议和服务器同步用户"""
         server_url = f"{protocol}://{host}:{port}"
         
-        # 创建服务器对象（LDAPS 需要 TLS 配置）
-        if protocol == 'ldaps':
-            # 创建 TLS 配置，允许自签名证书
-            tls_context = Tls(
-                validate=ssl.CERT_NONE,  # 不验证证书（允许自签名）
-                version=ssl.PROTOCOL_TLS_CLIENT,
-                ciphers='ALL:@SECLEVEL=0'  # 降低安全级别以兼容旧服务器
-            )
-            server = Server(
-                server_url, 
-                get_info=ALL, 
-                tls=tls_context,
-                connect_timeout=10,
-                allowed_referral_hosts=[('*', True)]
-            )
-            print(f'[LDAP 同步用户] 使用 LDAPS 加密连接：{server_url}')
-        else:
-            server = Server(server_url, get_info=ALL)
-            print(f'[LDAP 同步用户] 使用 LDAP 明文连接：{server_url}')
+        # 创建服务器对象（不追随 referral，避免绑定凭据被转发到第三方主机）
+        server = Server(server_url, get_info=ALL, tls=build_tls_context(), connect_timeout=10)
+        print(f'[LDAP 同步用户] 连接服务器：{server_url}')
         
         # 提取用户名
         username = None
@@ -379,7 +389,15 @@ class LdapService:
         ]
         
         conn = None
-        ldap_password = domain.ldap_password or domain.admin_password  # 优先使用明文密码
+        # 凭据为 Fernet 加密存储，绑定前需解密（旧数据可能是明文，原样使用）
+        try:
+            ldap_password = secret_decrypt(domain.ldap_password or domain.admin_password)
+        except RuntimeError as e:
+            print(f'[LDAP 同步用户] {e}')
+            return []
+        if not ldap_password:
+            print('[LDAP 同步用户] ❌ 未配置管理员密码')
+            return []
         
         # 添加详细日志
         print(f'[LDAP 同步用户] 尝试认证...')
@@ -393,12 +411,19 @@ class LdapService:
                     user=auth_config['user'],
                     password=ldap_password,
                     authentication=auth_config['auth'],
-                    auto_bind=True,
+                    auto_bind=False,
                     receive_timeout=30
                 )
-                print(f'[LDAP 同步用户] ✅ 认证成功')
-                break  # 认证成功，跳出循环
+                conn.open()
+                if protocol == 'ldap':
+                    # 389 端口先升级 STARTTLS 再绑定，避免凭据明文传输
+                    conn.start_tls()
+                if conn.bind() and conn.bound:
+                    print(f'[LDAP 同步用户] ✅ 认证成功')
+                    break  # 认证成功，跳出循环
+                conn = None
             except Exception as e:
+                conn = None
                 print(f'[LDAP 同步用户] ❌ 认证方式 {auth_config["auth"]} 失败：{str(e)[:100]}')
                 continue
         
@@ -471,319 +496,6 @@ class LdapService:
         return users
     
     @staticmethod
-    def authenticate_user(username, password, domain):
-        """验证 AD 用户登录（支持多主机故障转移）"""
-        if not LDAP3_AVAILABLE:
-            return False, "ldap3 库不可用"
-
-        # 防御性转义（防 LDAP 注入；该方法当前未被公开流程调用）
-        from services.ldap_filter import escape_ldap
-        username = escape_ldap(username)
-
-        # 模拟模式
-        if LdapService.CONNECTION_MODE == 'mock':
-            if password and len(password) >= 6:
-                return True, {'username': username, 'email': f'{username}@helixon.com', 'display_name': username.title()}
-            return False, "密码长度至少 6 位"
-        
-        # 获取服务器列表（支持多主机）
-        domain_config = {
-            'ldap_hosts': domain.ldap_hosts if hasattr(domain, 'ldap_hosts') else domain.ldap_host,
-            'ldap_host': domain.ldap_host,
-            'ldap_port': domain.ldap_port,
-            'ldaps_port': domain.ldaps_port,
-            'use_ssl': domain.use_ssl,
-            'base_dn': domain.base_dn,
-            'name': domain.name
-        }
-        
-        servers = LdapService.get_ldap_servers(domain_config)
-        if not servers:
-            return False, "未配置 LDAP 服务器"
-        
-        # 从数据库获取用户的实际 DN
-        from models.models import User
-        user = User.query.filter_by(username=username).first()
-        
-        # 优先使用数据库中保存的 DN，否则使用默认格式
-        if user and user.ad_dn:
-            user_dn = user.ad_dn
-        else:
-            # 兼容旧数据：假设用户在 CN=Users 中
-            user_dn = f"CN={username},CN=Users,{domain.base_dn}"
-        
-        # 尝试连接每个服务器
-        for protocol, host, port in servers:
-            try:
-                print(f'[LDAP 认证] 尝试连接服务器：{protocol}://{host}:{port}')
-                server_url = f"{protocol}://{host}:{port}"
-                
-                server = Server(server_url, get_info=ALL)
-                
-                # 尝试多种认证方式 (Linux 优化 - 只使用 SIMPLE 认证，移除 NTLM)
-                # 注意：NTLM 在 Linux 下可能存在兼容性问题，推荐使用 SIMPLE 认证
-                auth_configs = [
-                    {
-                        'name': 'SIMPLE 认证 - 完整 DN',
-                        'user': user_dn,
-                        'auth': SIMPLE,
-                        'desc': '使用完整 DN 进行 SIMPLE 认证 (推荐，最兼容)',
-                        'priority': 1
-                    },
-                    {
-                        'name': '自动认证 - 完整 DN',
-                        'user': user_dn,
-                        'auth': None,
-                        'desc': '让 ldap3 自动选择认证方式',
-                        'priority': 2
-                    }
-                ]
-                
-                # 按优先级排序
-                auth_configs.sort(key=lambda x: x['priority'])
-                
-                for auth_config in auth_configs:
-                    try:
-                        print(f'[LDAP 认证] 尝试认证方式：{auth_config["name"]} - {auth_config["desc"]}')
-                        conn = Connection(
-                            server,
-                            user=auth_config['user'],
-                            password=password,
-                            authentication=auth_config['auth'],
-                            auto_bind=True
-                        )
-                        
-                        # 认证成功，获取用户信息
-                        conn.search(
-                            search_base=domain.base_dn,
-                            search_filter=f'(&(sAMAccountName={username})(objectClass=user))',
-                            search_scope=SUBTREE,
-                            attributes=['mail', 'displayName', 'mobile', 'distinguishedName']
-                        )
-                        
-                        if len(conn.entries) > 0:
-                            entry = conn.entries[0]
-                            user_info = {
-                                'username': username,
-                                'email': str(entry.mail.value) if hasattr(entry, 'mail') and entry.mail.value else '',
-                                'display_name': str(entry.displayName.value) if hasattr(entry, 'displayName') and entry.displayName.value else username,
-                                'mobile': str(entry.mobile.value) if hasattr(entry, 'mobile') and entry.mobile.value else '',
-                                'dn': entry.entry_dn
-                            }
-                            conn.unbind()
-                            return True, user_info
-                        
-                        conn.unbind()
-                        return True, {'username': username, 'email': '', 'display_name': username}
-                        
-                    except LDAPException as e:
-                        error_str = str(e)
-                        print(f'[LDAP 认证] ❌ {auth_config["name"]} 失败：{error_str[:100]}')
-                        
-                        # 如果是 NTLM 相关错误，给出提示
-                        if 'NTLM' in error_str or 'ntlm' in error_str:
-                            print(f'[LDAP 认证] ⚠️  检测到 NTLM 认证问题，这是 Linux 下的已知兼容性问题')
-                            print(f'[LDAP 认证] 💡 建议使用 SIMPLE 认证 (已自动切换)')
-                        continue
-                
-                # 当前服务器认证失败，继续尝试下一台
-                print(f'[LDAP 认证] ❌ 服务器 {host}:{port} 认证失败，尝试下一台...')
-                continue
-                
-            except Exception as e:
-                print(f'[LDAP 认证] ❌ 服务器 {host}:{port} 连接异常：{str(e)[:100]}')
-                continue
-        
-        # 所有服务器都失败
-        return False, "用户名或密码错误"
-    
-    @staticmethod
-    def change_password(username, old_password, new_password, domain):
-        """修改 AD 用户密码 (需要原密码)"""
-        if not LDAP3_AVAILABLE:
-            return False, "ldap3 库不可用"
-        
-        # 模拟模式
-        if LdapService.CONNECTION_MODE == 'mock':
-            if new_password and len(new_password) >= 6:
-                return True, "密码修改成功 (模拟)"
-            return False, "新密码长度至少 6 位"
-        
-        try:
-            protocol = 'ldaps' if domain.use_ssl else 'ldap'
-            port = domain.ldaps_port if domain.use_ssl else domain.ldap_port
-            server_url = f"{protocol}://{domain.ldap_host}:{port}"
-            
-            # 创建服务器对象（LDAPS 需要 TLS 配置）
-            if protocol == 'ldaps':
-                # 创建 TLS 配置，允许自签名证书
-                tls_context = Tls(
-                    validate=ssl.CERT_NONE,  # 不验证证书（允许自签名）
-                    version=ssl.PROTOCOL_TLS_CLIENT,
-                    ciphers='ALL:@SECLEVEL=0'  # 降低安全级别以兼容旧服务器
-                )
-                server = Server(
-                    server_url, 
-                    get_info=ALL, 
-                    tls=tls_context,
-                    connect_timeout=10,
-                    allowed_referral_hosts=[('*', True)]
-                )
-                print(f'[LDAP 修改密码] 使用 LDAPS 加密连接：{server_url}')
-            else:
-                server = Server(server_url, get_info=ALL)
-                print(f'[LDAP 修改密码] 使用 LDAP 明文连接：{server_url}')
-            
-            # 从数据库获取用户的实际 DN
-            from models.models import User
-            user = User.query.filter_by(username=username).first()
-            
-            # 优先使用数据库中保存的 DN，否则使用默认格式
-            if user and user.ad_dn:
-                user_dn = user.ad_dn
-            else:
-                # 兼容旧数据：假设用户在 CN=Users 中
-                user_dn = f"CN={username},CN=Users,{domain.base_dn}"
-            
-            # 先用旧密码认证
-            auth_configs = [
-                {'user': user_dn, 'auth': SIMPLE},
-                {'user': f"{username}@{domain.name}", 'auth': NTLM},
-            ]
-            
-            conn = None
-            for auth_config in auth_configs:
-                try:
-                    conn = Connection(
-                        server,
-                        user=auth_config['user'],
-                        password=old_password,
-                        authentication=auth_config['auth'],
-                        auto_bind=True
-                    )
-                    break
-                except:
-                    continue
-            
-            if not conn:
-                return False, "原密码错误"
-            
-            # 修改密码 (LDAP 修改 unicodePwd 属性)
-            try:
-                # AD 要求密码必须用双引号包裹并编码为 UTF-16LE
-                encoded_password = ('"' + new_password + '"').encode('utf-16-le')
-                            
-                # 使用 MODIFY_REPLACE 操作
-                result = conn.modify(
-                    user_dn,
-                    {'unicodePwd': [(MODIFY_REPLACE, [encoded_password])]}
-                )
-                            
-                if result:
-                    conn.unbind()
-                    return True, "密码修改成功"
-                else:
-                    error_msg = conn.result.get('message', '密码修改失败')
-                    conn.unbind()
-                    return False, error_msg
-                                
-            except Exception as e:
-                return False, f"修改密码失败：{str(e)}"
-            
-        except Exception as e:
-            return False, f"密码修改失败：{str(e)}"
-    
-    @staticmethod
-    def change_password_by_admin(username, new_password, domain):
-        """使用管理员权限修改 AD 用户密码 (不需要原密码)"""
-        if not LDAP3_AVAILABLE:
-            return False, "ldap3 库不可用"
-        
-        # 模拟模式
-        if LdapService.CONNECTION_MODE == 'mock':
-            if new_password and len(new_password) >= 6:
-                return True, "密码修改成功 (模拟)"
-            return False, "新密码长度至少 6 位"
-        
-        try:
-            # 智能判断：根据端口决定使用什么协议
-            # 如果端口是 636 或 ldaps_port，自动使用 LDAPS
-            is_ldaps_port = (domain.ldap_port == 636 or domain.ldaps_port == 636 or domain.ldap_port == domain.ldaps_port)
-            use_ssl = domain.use_ssl or is_ldaps_port
-            
-            protocol = 'ldaps' if use_ssl else 'ldap'
-            port = domain.ldaps_port if use_ssl else domain.ldap_port
-            server_url = f"{protocol}://{domain.ldap_host}:{port}"
-            
-            # 创建服务器对象（LDAPS 需要 TLS 配置）
-            if protocol == 'ldaps':
-                # 创建 TLS 配置，允许自签名证书
-                tls_context = Tls(
-                    validate=ssl.CERT_NONE,
-                    version=ssl.PROTOCOL_TLS_CLIENT,
-                    ciphers='ALL:@SECLEVEL=0'
-                )
-                server = Server(
-                    server_url,
-                    get_info=ALL,
-                    tls=tls_context,
-                    connect_timeout=10,
-                    allowed_referral_hosts=[('*', True)]
-                )
-                print(f'[LDAP 修改密码] 使用 LDAPS 加密连接：{server_url}')
-            else:
-                server = Server(server_url, get_info=ALL)
-                print(f'[LDAP 修改密码] 使用 LDAP 明文连接：{server_url}')
-            
-            # 从数据库获取用户的实际 DN
-            from models.models import User
-            user = User.query.filter_by(username=username).first()
-            
-            # 优先使用数据库中保存的 DN，否则使用默认格式
-            if user and user.ad_dn:
-                user_dn = user.ad_dn
-            else:
-                # 兼容旧数据：假设用户在 CN=Users 中
-                user_dn = f"CN={username},CN=Users,{domain.base_dn}"
-            
-            # 使用管理员账号认证
-            try:
-                conn = Connection(
-                    server,
-                    user=domain.admin_dn,
-                    password=domain.admin_password,
-                    authentication=SIMPLE,
-                    auto_bind=True
-                )
-            except Exception as e:
-                return False, f"管理员认证失败：{str(e)}"
-
-            # 修改密码 (LDAP 修改 unicodePwd 属性)
-            try:
-                # AD 要求密码必须用双引号包裹并编码为 UTF-16LE
-                encoded_password = ('"' + new_password + '"').encode('utf-16-le')
-
-                # 使用 MODIFY_REPLACE 操作
-                result = conn.modify(
-                    user_dn,
-                    {'unicodePwd': [(MODIFY_REPLACE, [encoded_password])]}
-                )
-
-                if result:
-                    conn.unbind()
-                    return True, "密码修改成功"
-                else:
-                    error_msg = conn.result.get('message', '密码修改失败')
-                    conn.unbind()
-                    return False, error_msg
-
-            except Exception as e:
-                return False, f"修改密码失败：{str(e)}"
-
-        except Exception as e:
-            return False, f"密码修改失败：{str(e)}"
-
-    @staticmethod
     def lookup_user_by_email(domain, email):
         """按 mail 查找用户，返回 dict 或 None。
         返回字段：user_dn, mobile, mail, sam_account_name, member_of(list), disabled(bool)。
@@ -792,6 +504,12 @@ class LdapService:
             return None
         from services.ldap_filter import escape_ldap
 
+        try:
+            bind_password = secret_decrypt(domain.admin_password)
+        except RuntimeError as e:
+            print(f'[LDAP 查找] {e}')
+            return None
+
         servers = LdapService.get_ldap_servers({
             'ldap_hosts': domain.ldap_hosts or domain.ldap_host,
             'ldap_host': domain.ldap_host,
@@ -799,7 +517,7 @@ class LdapService:
             'ldaps_port': domain.ldaps_port,
             'use_ssl': domain.use_ssl,
             'admin_dn': domain.admin_dn,
-            'admin_password': secret_decrypt(domain.admin_password),
+            'admin_password': bind_password,
             'base_dn': domain.base_dn,
         })
         if not servers:
@@ -809,17 +527,20 @@ class LdapService:
         attrs = ['distinguishedName', 'mail', 'mobile', 'sAMAccountName', 'memberOf', 'userAccountControl']
         for protocol, host, port in servers:
             server_url = f"{protocol}://{host}:{port}"
-            if protocol == 'ldaps':
-                tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
-                                  ciphers='ALL:@SECLEVEL=0')
-                server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10)
-            else:
-                server = Server(server_url, get_info=ALL, connect_timeout=10)
+            server = Server(server_url, get_info=ALL, tls=build_tls_context(), connect_timeout=10)
             conn = None
             try:
                 conn = Connection(server, user=domain.admin_dn,
-                                  password=secret_decrypt(domain.admin_password),
-                                  authentication=SIMPLE, auto_bind=True, receive_timeout=30)
+                                  password=bind_password,
+                                  authentication=SIMPLE, auto_bind=False, receive_timeout=30)
+                conn.open()
+                if protocol == 'ldap':
+                    # 389 端口先升级 STARTTLS 再绑定，避免管理员密码明文传输
+                    if not conn.start_tls():
+                        raise LDAPException('STARTTLS 失败（域控可能未安装证书），result=%s' % conn.result)
+                conn.bind()
+                if not conn.bound:
+                    raise LDAPException('绑定失败：%s' % conn.result)
                 conn.search(search_base=domain.base_dn, search_filter=filt, search_scope=SUBTREE,
                             attributes=attrs)
                 # Bound + searched OK on this server: a real "no such user" → stop.
@@ -864,6 +585,7 @@ class LdapService:
         if LdapService.CONNECTION_MODE == 'mock':
             return True, '密码修改成功 (模拟)'
         try:
+            bind_password = secret_decrypt(domain.admin_password)
             servers = LdapService.get_ldap_servers({
                 'ldap_hosts': domain.ldap_hosts or domain.ldap_host,
                 'ldap_host': domain.ldap_host,
@@ -871,7 +593,7 @@ class LdapService:
                 'ldaps_port': domain.ldaps_port,
                 'use_ssl': domain.use_ssl,
                 'admin_dn': domain.admin_dn,
-                'admin_password': secret_decrypt(domain.admin_password),
+                'admin_password': bind_password,
                 'base_dn': domain.base_dn,
             })
             if not servers:
@@ -880,20 +602,12 @@ class LdapService:
             last_err = '密码修改失败'
             for protocol, host, port in servers:
                 server_url = f"{protocol}://{host}:{port}"
-                if protocol == 'ldaps':
-                    tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
-                                      ciphers='ALL:@SECLEVEL=0')
-                    server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10,
-                                    allowed_referral_hosts=[('*', True)])
-                else:
-                    # 非 LDAPS：也配 TLS（供 STARTTLS 在 389 端口升级加密，AD 改密码要求）
-                    tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
-                                      ciphers='ALL:@SECLEVEL=0')
-                    server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10)
+                # 不追随 referral，避免绑定凭据被转发到第三方主机
+                server = Server(server_url, get_info=ALL, tls=build_tls_context(), connect_timeout=10)
                 conn = None
                 try:
                     conn = Connection(server, user=domain.admin_dn,
-                                      password=secret_decrypt(domain.admin_password),
+                                      password=bind_password,
                                       authentication=SIMPLE, auto_bind=False)
                     conn.open()
                     if protocol == 'ldap':
@@ -954,9 +668,7 @@ class LdapService:
             last_err = '连接失败'
             for protocol, host, port in servers:
                 server_url = f"{protocol}://{host}:{port}"
-                tls_context = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT,
-                                  ciphers='ALL:@SECLEVEL=0')
-                server = Server(server_url, get_info=ALL, tls=tls_context, connect_timeout=10)
+                server = Server(server_url, get_info=ALL, tls=build_tls_context(), connect_timeout=10)
                 try:
                     conn = Connection(server, user=user_dn, password=password,
                                       authentication=SIMPLE, auto_bind=False)

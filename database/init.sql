@@ -30,14 +30,18 @@ CREATE INDEX idx_users_username ON users(username);
 CREATE TABLE IF NOT EXISTS domains (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    ldap_host VARCHAR(200) NOT NULL,
+    ldap_hosts VARCHAR(500) NOT NULL,      -- 多主机，逗号分隔
+    ldap_host VARCHAR(200),                -- 旧字段，兼容保留
     ldap_port INTEGER DEFAULT 389,
     ldaps_port INTEGER DEFAULT 636,
     base_dn VARCHAR(255) NOT NULL,
     admin_dn VARCHAR(255) NOT NULL,
-    admin_password VARCHAR(255) NOT NULL,
+    -- Fernet 加密 token 约 140+ 字符（随明文长度增长），必须留足余量
+    admin_password VARCHAR(500) NOT NULL,
+    ldap_password VARCHAR(500),
     use_ssl BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
+    is_connected BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -46,7 +50,8 @@ CREATE TABLE IF NOT EXISTS domains (
 CREATE TABLE IF NOT EXISTS sms_configs (
     id SERIAL PRIMARY KEY,
     access_key VARCHAR(100) NOT NULL,
-    access_secret VARCHAR(100) NOT NULL,
+    -- Fernet token 约 140 字符（阿里云 Secret 约 30 字符），100 会溢出
+    access_secret VARCHAR(500) NOT NULL,
     sign_name VARCHAR(50) NOT NULL,
     template_code VARCHAR(50) NOT NULL,
     is_active BOOLEAN DEFAULT TRUE,
@@ -59,7 +64,7 @@ CREATE TABLE IF NOT EXISTS admin_logs (
     id SERIAL PRIMARY KEY,
     admin_id INTEGER REFERENCES users(id),
     action VARCHAR(100) NOT NULL,
-    target_user VARCHAR(100),
+    target_user VARCHAR(255),
     details TEXT,
     ip_address VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

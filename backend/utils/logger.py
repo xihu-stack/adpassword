@@ -27,10 +27,12 @@ def log_operation(action, target_user=None, details=None):
         
         log = AdminLog(
             admin_id=admin_id,
-            action=action,
-            target_user=target_user,
-            details=details,
-            ip_address=ip_address
+            action=(action or 'unknown')[:100],
+            # 截断到列宽以内：公开入口的 target_user（邮箱）长度不可控，
+            # 超长会导致 PG 插入失败且被上层 try/except 吞掉（审计静默丢失）
+            target_user=(str(target_user)[:250] if target_user else None),
+            details=(str(details)[:1000] if details else None),
+            ip_address=(str(ip_address)[:50] if ip_address else None),
         )
         
         db.session.add(log)

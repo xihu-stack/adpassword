@@ -1,5 +1,6 @@
 from flask import Blueprint, request, session, jsonify, render_template, current_app
 from datetime import datetime, timedelta
+import secrets
 from services.reset_service import ResetService, RESET_SESSION_MINUTES
 
 reset_bp = Blueprint('reset', __name__)
@@ -55,6 +56,10 @@ def verify_identity():
         return _fail('请输入邮箱和手机号', 1), 400
 
     svc = ResetService()
+
+    # 概率性触发过期数据清理（验证码>24h、限流/锁定行>30天），失败不影响主流程
+    if secrets.randbelow(100) == 0:
+        svc.cleanup_expired()
 
     # IP 锁定检查（防枚举：同一 IP 连续失败超限则锁 30 分钟）
     allowed, lock_msg = svc.check_ip_locked(request.remote_addr)

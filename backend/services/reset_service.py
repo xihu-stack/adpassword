@@ -115,26 +115,6 @@ class ResetService:
                 rl.sent_count -= 1
         db.session.commit()
 
-    # 兼容旧调用（仅读冷却+额度，不预留）
-    def check_rate_limits(self, phone, email, ip):
-        ok, reason = self._check_cooldown(phone)
-        if not ok:
-            return False, reason
-        now = datetime.now()
-        for key_type, key_value, cap in (('phone', phone, HOURLY_LIMIT_PHONE),
-                                         ('email', email, HOURLY_LIMIT_EMAIL),
-                                         ('ip', ip, HOURLY_LIMIT_IP)):
-            if not key_value:
-                continue
-            rl = SmsRateLimit.query.filter_by(key_type=key_type, key_value=key_value).first()
-            if rl:
-                if now - rl.window_start > timedelta(hours=1):
-                    rl.sent_count = 0
-                    rl.window_start = now
-                if rl.sent_count >= cap:
-                    return False, '请求过于频繁'
-        return True, None
-
     # ---------- 身份匹配 ----------
     def _protected_list(self):
         import json
@@ -150,7 +130,8 @@ class ResetService:
         """检查 IP 是否因多次身份校验失败被锁定。返回 (allowed, message)。"""
         if not ip:
             return True, None
-        rl = SmsRateLimit.query.filter_by(key_type='identity_fail', key_value=ip).first()
+        rl = (SmsRateLimit.query.filter_by(key_type='identity_fail', key_value=ip)
+              .with_for_update().first())
         if rl and rl.sent_count >= IDENTITY_FAIL_LIMIT:
             elapsed = datetime.now() - rl.window_start
             if elapsed < timedelta(minutes=IDENTITY_LOCK_MINUTES):
@@ -167,7 +148,8 @@ class ResetService:
         if not ip:
             return
         now = datetime.now()
-        rl = SmsRateLimit.query.filter_by(key_type='identity_fail', key_value=ip).first()
+        rl = (SmsRateLimit.query.filter_by(key_type='identity_fail', key_value=ip)
+              .with_for_update().first())
         if not rl:
             rl = SmsRateLimit(key_type='identity_fail', key_value=ip, sent_count=0, window_start=now)
             db.session.add(rl)
@@ -327,6 +309,18 @@ class ResetService:
                 return False, '新密码不符合域控密码策略（可能包含用户名、与历史密码重复、或修改过于频繁），请换一个全新的密码重试'
             return False, '重置失败，请联系管理员'
         return True, 'OK'
+
+    def cleanup_expired(self):
+        """清理过期数据：>24h 的验证码记录、>30 天未活动的限流/锁定行。
+        由公开重置入口按概率触发，失败静默回滚（不影响主流程）。"""
+        try:
+            code_cutoff = datetime.now() - timedelta(hours=24)
+            SmsVerificationCode.query.filter(SmsVerificationCode.created_at < code_cutoff).delete()
+            rl_cutoff = datetime.now() - timedelta(days=30)
+            SmsRateLimit.query.filter(SmsRateLimit.window_start < rl_cutoff).delete()
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
 
 def normalize_email(email):

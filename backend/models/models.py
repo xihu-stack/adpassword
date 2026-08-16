@@ -15,8 +15,9 @@ class Domain(db.Model):
     ldaps_port = db.Column(db.Integer, default=636)
     base_dn = db.Column(db.String(255), nullable=False)
     admin_dn = db.Column(db.String(255), nullable=False)
-    admin_password = db.Column(db.String(255), nullable=False)  # 本地管理员密码（bcrypt 加密）
-    ldap_password = db.Column(db.String(255))  # LDAP 连接明文密码
+    # Fernet 加密后的 token 约 140+ 字符，明文密码越长 token 越长，必须留足余量
+    admin_password = db.Column(db.String(500), nullable=False)  # 本地管理员密码（Fernet 加密）
+    ldap_password = db.Column(db.String(500))  # LDAP 连接密码（Fernet 加密）
     use_ssl = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
     is_connected = db.Column(db.Boolean, default=False)  # 连接状态
@@ -89,7 +90,8 @@ class SmsConfig(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     access_key = db.Column(db.String(100), nullable=False)
-    access_secret = db.Column(db.String(100), nullable=False)
+    # 阿里云 Secret 约 30 字符 → Fernet token ≈140 字符，100 会溢出（PG 报错/MySQL 截断）
+    access_secret = db.Column(db.String(500), nullable=False)
     sign_name = db.Column(db.String(50), nullable=False)
     template_code = db.Column(db.String(50), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
@@ -119,7 +121,7 @@ class AdminLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     admin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     action = db.Column(db.String(100), nullable=False)
-    target_user = db.Column(db.String(100))
+    target_user = db.Column(db.String(255))
     details = db.Column(db.Text)
     ip_address = db.Column(db.String(50))
     created_at = db.Column(db.DateTime, default=datetime.now)
