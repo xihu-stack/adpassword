@@ -151,3 +151,14 @@ def test_sqlite_wal_enabled(app):
         from models.models import db
         mode = db.session.execute(text('PRAGMA journal_mode')).scalar()
         assert str(mode).lower() == 'wal', mode
+
+
+def test_favicon_linked_and_served(admin_client, anon_client):
+    """全部页面均声明锁形 favicon，图标文件可访问"""
+    for c, url in ((anon_client, '/reset'), (anon_client, '/login'),
+                   (admin_client, '/admin/dashboard'), (admin_client, '/admin/manual')):
+        body = c.get(url).get_data(as_text=True)
+        assert 'favicon.svg' in body and 'favicon.png' in body, url
+    for f in ('favicon.svg', 'favicon.png', 'apple-touch-icon.png'):
+        r = anon_client.get('/static/' + f)
+        assert r.status_code == 200 and len(r.data) > 100, f

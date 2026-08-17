@@ -24,6 +24,9 @@ def login():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>华深智药 - LDAP 登录</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+        <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {

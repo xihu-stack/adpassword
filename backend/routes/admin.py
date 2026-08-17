@@ -39,6 +39,9 @@ def dashboard():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>管理后台 - 华深智药</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+        <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
@@ -328,6 +331,9 @@ def domains_page():
     <head>
         <meta charset="UTF-8">
         <title>域配置管理 - 华深智药</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+        <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f5f7fa; }
@@ -766,6 +772,9 @@ def sms_page():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>短信配置 - 华深智药</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+        <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f5f7fa; }
@@ -979,6 +988,9 @@ def logs_page():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>操作日志 - 华深智药</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+        <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f5f7fa; }
@@ -1275,6 +1287,9 @@ def edit_domain_page(domain_id):
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>编辑域配置 - 华深智药</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+        <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
         <style>
             body {
                 font-family: 'Microsoft YaHei', Arial, sans-serif;
@@ -2512,6 +2527,9 @@ def change_password_page():
     <head>
         <meta charset="UTF-8">
         <title>修改密码 - 华深智药</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+        <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
         <style>
             * { margin:0; padding:0; box-sizing:border-box; }
             body { font-family:'Microsoft YaHei',Arial,sans-serif; background:#f5f7fa; }
@@ -2580,6 +2598,9 @@ def protected_page():
     <head>
         <meta charset="UTF-8">
         <title>保护名单 - 华深智药</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+        <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
         <style>
             * { margin:0; padding:0; box-sizing:border-box; }
             body { font-family:'Microsoft YaHei',Arial,sans-serif; background:#f5f7fa; }
@@ -2686,6 +2707,9 @@ def security_page():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>访问控制 - 华深智药</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+        <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
         <style>
             * { margin:0; padding:0; box-sizing:border-box; }
             body { font-family:'Microsoft YaHei',Arial,sans-serif; background:#f5f7fa; }
@@ -2852,6 +2876,9 @@ def manual_page():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>运维操作手册 - 华深智药</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+        <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+        <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
         <style>
             * { margin:0; padding:0; box-sizing:border-box; }
             body { font-family:'Microsoft YaHei',Arial,sans-serif; background:#f5f7fa; color:#333; }
