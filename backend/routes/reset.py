@@ -54,6 +54,11 @@ def verify_identity():
     _clear_reset()
     if not email or not phone:
         return _fail('请输入邮箱和手机号', 1), 400
+    # 长度兜底：防止超长输入打爆限流键/审计字段（规范上限 邮箱254/手机15位数字）
+    if not isinstance(email, str) or len(email) > 254:
+        return _fail('邮箱格式不正确', 1), 400
+    if not isinstance(phone, str) or len(phone) > 20:
+        return _fail('手机号格式不正确', 1), 400
 
     svc = ResetService()
 

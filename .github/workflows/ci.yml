@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt pytest
+          # ldap3 在 CI 无域控也能 import；psycopg2-binary 提供 PG 驱动占位
+        timeout-minutes: 5
+
+      - name: 编译检查
+        run: python -m compileall -q backend/app.py backend/config.py backend/routes backend/services backend/utils backend/models
+
+      - name: 运行测试（含 JS 语法门禁）
+        run: python -m pytest tests -v
+        timeout-minutes: 5

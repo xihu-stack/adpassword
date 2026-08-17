@@ -104,22 +104,27 @@ bash deploy_linux.sh                                                  # DEMO 体
 ```
 ad2/
 ├── backend/
-│   ├── app.py                  # Flask 入口（CSRF、安全头、ProxyFix、DEMO 种子）
-│   ├── config.py               # 配置（环境变量驱动 + SQLite 超时）
+│   ├── app.py                  # Flask 入口（CSRF、安全头、ProxyFix、SQLite WAL、DEMO 种子）
+│   ├── config.py               # 配置（环境变量驱动 + SQLite 超时 + 日志保留期）
+│   ├── init_admin_password.py  # admin 口令锁死恢复工具
 │   ├── models/models.py        # ORM（Domain/SmsConfig 加密访问器、限流表）
 │   ├── routes/
 │   │   ├── reset.py            # 公开重置（状态门控 + IP 锁定 + 审计）
 │   │   ├── ldap_auth.py        # 管理员登录（限流 + 防固定）
-│   │   └── admin.py            # 后台（域/短信/保护名单/改密/验证/日志）
+│   │   └── admin.py            # 后台（域/短信/保护名单/访问控制/改密/验证/日志/手册）
 │   ├── services/
-│   │   ├── reset_service.py    # 核心（匹配/发码/校验/重置/限流/锁定 并发安全）
-│   │   ├── ldap_service.py     # AD 查找 + STARTTLS 改密 + 绑定验证
+│   │   ├── reset_service.py    # 核心（匹配/发码/校验/重置/限流/锁定/清理 并发安全）
+│   │   ├── ldap_service.py     # AD 查找 + STARTTLS 改密 + 绑定验证（TLS 可配置校验）
 │   │   ├── sms_service.py      # 阿里云短信
 │   │   ├── secret_crypto.py    # Fernet 加密
 │   │   └── ldap_filter.py      # LDAP 注入转义
 │   ├── templates/reset.html    # 重置页（蛋白背景 + 动画成功页）
 │   └── static/                 # logo.png、bg.js（p5 蛋白螺旋）、p5.min.js
+├── tests/                      # pytest 套件（重置流程/后台/安全 + JS 语法门禁）
+├── .github/workflows/ci.yml    # CI：编译检查 + 全量测试（含 node --check 页面脚本）
 ├── database/                   # init.sql + 迁移脚本
+├── scripts/                    # backup_database.py、health_check.py
+│   └── maintenance/            # 历史一次性诊断/修复工具（归档）
 ├── systemd/ · docs/ · wendang/
 ├── deploy_linux.sh · deploy_windows.bat
 └── requirements.txt

@@ -117,7 +117,8 @@ fi
 # ---- 5) 后台启动 ----
 mkdir -p logs
 echo "[5/5] 后台启动 (gunicorn $HOST:$PORT)..."
-nohup $PY -m gunicorn --bind "$HOST:$PORT" --workers 2 --threads 4 app:app >> "$LOG_FILE" 2>&1 &
+nohup $PY -m gunicorn --bind "$HOST:$PORT" --workers 2 --threads 4 \
+    --timeout 75 --graceful-timeout 30 app:app >> "$LOG_FILE" 2>&1 &
 echo $! > "$PID_FILE"
 sleep 3
 

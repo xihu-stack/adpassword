@@ -124,8 +124,8 @@ class AdminLog(db.Model):
     target_user = db.Column(db.String(255))
     details = db.Column(db.Text)
     ip_address = db.Column(db.String(50))
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    
+    created_at = db.Column(db.DateTime, default=datetime.now, index=True)
+
     admin = db.relationship('User', backref=db.backref('logs', lazy='dynamic'))
     
     def to_dict(self):
@@ -180,7 +180,7 @@ class SmsRateLimit(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     key_type = db.Column(db.String(20), nullable=False)   # phone|email|ip
-    key_value = db.Column(db.String(200), nullable=False)
+    key_value = db.Column(db.String(255), nullable=False)  # email 最长 254，200 会溢出
     sent_count = db.Column(db.Integer, default=0)
     window_start = db.Column(db.DateTime, default=datetime.now)
 

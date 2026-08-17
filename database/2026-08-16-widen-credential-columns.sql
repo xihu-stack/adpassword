@@ -17,9 +17,11 @@ ALTER TABLE sms_configs ALTER COLUMN access_secret TYPE VARCHAR(500);
 ALTER TABLE domains      ALTER COLUMN admin_password TYPE VARCHAR(500);
 ALTER TABLE domains      ALTER COLUMN ldap_password  TYPE VARCHAR(500);
 ALTER TABLE admin_logs   ALTER COLUMN target_user    TYPE VARCHAR(255);
+ALTER TABLE sms_rate_limits ALTER COLUMN key_value   TYPE VARCHAR(255);
 
 -- MySQL 版本（如使用 MySQL 请注释掉上面 PostgreSQL 段，改用下面）：
 -- ALTER TABLE sms_configs MODIFY access_secret VARCHAR(500) NOT NULL;
 -- ALTER TABLE domains      MODIFY admin_password VARCHAR(500) NOT NULL;
 -- ALTER TABLE domains      MODIFY ldap_password  VARCHAR(500);
 -- ALTER TABLE admin_logs   MODIFY target_user    VARCHAR(255);
+-- ALTER TABLE sms_rate_limits MODIFY key_value   VARCHAR(255) NOT NULL;

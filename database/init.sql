@@ -92,7 +92,7 @@ CREATE INDEX idx_sms_verification_used ON sms_verification_codes(is_used);
 CREATE TABLE IF NOT EXISTS sms_rate_limits (
     id SERIAL PRIMARY KEY,
     key_type VARCHAR(20) NOT NULL,        -- phone|email|ip
-    key_value VARCHAR(200) NOT NULL,
+    key_value VARCHAR(255) NOT NULL,
     sent_count INTEGER DEFAULT 0,
     window_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_sms_rate_key UNIQUE (key_type, key_value)

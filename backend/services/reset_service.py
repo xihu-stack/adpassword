@@ -80,9 +80,9 @@ class ResetService:
         """原子预留发送额度：PG 行锁(with_for_update)下检查+累加，全成功或全回滚。
         SQLite 测试环境为单线程，with_for_update 被忽略，功能等价。"""
         now = datetime.now()
-        keys = (('phone', phone, HOURLY_LIMIT_PHONE),
-                ('email', email, HOURLY_LIMIT_EMAIL),
-                ('ip', ip, HOURLY_LIMIT_IP))
+        keys = (('phone', (phone or '')[:255], HOURLY_LIMIT_PHONE),
+                ('email', (email or '')[:255], HOURLY_LIMIT_EMAIL),
+                ('ip', (ip or '')[:255], HOURLY_LIMIT_IP))
         for key_type, key_value, cap in keys:
             if not key_value:
                 continue
@@ -104,9 +104,11 @@ class ResetService:
         return True, None
 
     def _refund_quota(self, phone, email, ip):
-        """发送失败时退还额度（与 _reserve_quota 对称）。"""
+        """发送失败时退还额度（与 _reserve_quota 对称，键截断须完全一致）。"""
         now = datetime.now()
-        for key_type, key_value in (('phone', phone), ('email', email), ('ip', ip)):
+        for key_type, key_value in (('phone', (phone or '')[:255]),
+                                    ('email', (email or '')[:255]),
+                                    ('ip', (ip or '')[:255])):
             if not key_value:
                 continue
             rl = SmsRateLimit.query.filter_by(
@@ -311,13 +313,22 @@ class ResetService:
         return True, 'OK'
 
     def cleanup_expired(self):
-        """清理过期数据：>24h 的验证码记录、>30 天未活动的限流/锁定行。
+        """清理过期数据：>24h 的验证码记录、>30 天未活动的限流/锁定行、
+        超过保留期的审计日志（LOG_RETENTION_DAYS，0=永久保留）。
         由公开重置入口按概率触发，失败静默回滚（不影响主流程）。"""
         try:
             code_cutoff = datetime.now() - timedelta(hours=24)
             SmsVerificationCode.query.filter(SmsVerificationCode.created_at < code_cutoff).delete()
             rl_cutoff = datetime.now() - timedelta(days=30)
             SmsRateLimit.query.filter(SmsRateLimit.window_start < rl_cutoff).delete()
+            try:
+                retention_days = int(current_app.config.get('LOG_RETENTION_DAYS', 180))
+            except (TypeError, ValueError):
+                retention_days = 180
+            if retention_days > 0:
+                from models.models import AdminLog
+                log_cutoff = datetime.now() - timedelta(days=retention_days)
+                AdminLog.query.filter(AdminLog.created_at < log_cutoff).delete()
             db.session.commit()
         except Exception:
             db.session.rollback()

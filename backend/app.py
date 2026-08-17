@@ -8,6 +8,19 @@ import bcrypt
 import secrets
 import logging
 
+# SQLite 并发优化：WAL 模式（读不阻塞写，多 worker 下显著减少 database is locked）
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+
+
+@event.listens_for(Engine, 'connect')
+def _sqlite_pragma(dbapi_conn, connection_record):
+    if type(dbapi_conn).__module__.startswith('sqlite'):
+        cursor = dbapi_conn.cursor()
+        cursor.execute('PRAGMA journal_mode=WAL')
+        cursor.execute('PRAGMA synchronous=NORMAL')
+        cursor.close()
+
 
 def create_app():
     app = Flask(__name__)

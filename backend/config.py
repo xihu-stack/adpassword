@@ -75,6 +75,9 @@ class Config:
     LOG_FILE = os.getenv('LOG_FILE', 'logs/app.log')
     LOG_MAX_BYTES = int(os.getenv('LOG_MAX_BYTES', '10485760'))  # 10MB
     LOG_BACKUP_COUNT = int(os.getenv('LOG_BACKUP_COUNT', '5'))
+
+    # 审计日志保留天数（admin_logs 自动清理；0 = 永久保留不清理）
+    LOG_RETENTION_DAYS = int(os.getenv('LOG_RETENTION_DAYS', '180'))
     
     @classmethod
     def init_app(cls, app):

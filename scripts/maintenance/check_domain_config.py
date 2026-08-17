@@ -1,3 +1,9 @@
+# 运行目录自适应：允许从任意 cwd 执行（如 python scripts/maintenance/xxx.py）
+import sys, os
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_HERE, '..', '..'))              # 项目根（backend.xxx 导入风格）
+sys.path.insert(0, os.path.join(_HERE, '..', '..', 'backend'))   # backend 目录（from models... 导入风格）
+
 """
 检查当前域配置的详细问题
 """

@@ -162,12 +162,16 @@ def dashboard():
                         <p>域配置数量</p>
                     </div>
                     <div class="stat-card">
-                        <h3 id="userCount">-</h3>
-                        <p>用户总数</p>
+                        <h3 id="todayResets">-</h3>
+                        <p>今日重置成功</p>
                     </div>
                     <div class="stat-card">
-                        <h3 id="activeUserCount">-</h3>
-                        <p>活跃用户</p>
+                        <h3 id="weekResets">-</h3>
+                        <p>近 7 天重置成功</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 id="todayCodes">-</h3>
+                        <p>今日发送验证码</p>
                     </div>
                     <div class="stat-card" style="background: linear-gradient(135deg, #67C23A 0%, #4CAF50 100%);">
                         <h3 id="systemStatus">正常</h3>
@@ -226,16 +230,18 @@ def dashboard():
                     .then(data => {
                         if (data.success) {
                             document.getElementById('domainCount').textContent = data.data.domainCount || 0;
-                            document.getElementById('userCount').textContent = data.data.userCount || 0;
-                            document.getElementById('activeUserCount').textContent = data.data.activeUserCount || data.data.userCount || 0;
-                            
-                            // 系统状态判断
-                            if (data.data.domainCount > 0 && data.data.userCount > 0) {
+                            document.getElementById('todayResets').textContent = data.data.todayResets || 0;
+                            document.getElementById('weekResets').textContent = data.data.weekResets || 0;
+                            document.getElementById('todayCodes').textContent = data.data.todayCodes || 0;
+
+                            // 系统状态：域配置 + 短信配置就绪才算正常
+                            var card = document.getElementById('systemStatus').parentElement;
+                            if (data.data.domainCount > 0 && data.data.smsConfigured) {
                                 document.getElementById('systemStatus').textContent = '正常';
-                                document.getElementById('systemStatus').parentElement.style.background = 'linear-gradient(135deg, #67C23A 0%, #4CAF50 100%)';
+                                card.style.background = 'linear-gradient(135deg, #67C23A 0%, #4CAF50 100%)';
                             } else {
                                 document.getElementById('systemStatus').textContent = '待配置';
-                                document.getElementById('systemStatus').parentElement.style.background = 'linear-gradient(135deg, #E6A23C 0%, #F5A623 100%)';
+                                card.style.background = 'linear-gradient(135deg, #E6A23C 0%, #F5A623 100%)';
                             }
                         }
                     })
@@ -259,20 +265,34 @@ def dashboard():
 @admin_bp.route('/api/admin/dashboard/stats')
 @admin_required
 def dashboard_stats():
-    """管理后台统计数据"""
-    from models.models import Domain, User
-    
+    """管理后台统计数据（运营指标：重置量/发码量取自审计日志）"""
+    from models.models import Domain, User, AdminLog
+    from datetime import datetime, timedelta
+
     try:
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today_start - timedelta(days=6)
+
         domain_count = Domain.query.count()
-        user_count = User.query.count()
-        active_user_count = User.query.filter_by(is_active=True).count()
-        
+        today_resets = AdminLog.query.filter(
+            AdminLog.action == 'password_reset',
+            AdminLog.created_at >= today_start).count()
+        week_resets = AdminLog.query.filter(
+            AdminLog.action == 'password_reset',
+            AdminLog.created_at >= week_start).count()
+        today_codes = AdminLog.query.filter(
+            AdminLog.action == 'reset_identity_ok',
+            AdminLog.created_at >= today_start).count()
+
         return jsonify({
             'success': True,
             'data': {
                 'domainCount': domain_count,
-                'userCount': user_count,
-                'activeUserCount': active_user_count,
+                'todayResets': today_resets,
+                'weekResets': week_resets,
+                'todayCodes': today_codes,
+                'smsConfigured': bool(_sms_configured()),
             }
         })
     except Exception as e:
@@ -281,10 +301,17 @@ def dashboard_stats():
             'success': False,
             'data': {
                 'domainCount': 0,
-                'userCount': 0,
-                'activeUserCount': 0,
+                'todayResets': 0,
+                'weekResets': 0,
+                'todayCodes': 0,
+                'smsConfigured': False,
             }
         })
+
+
+def _sms_configured():
+    from models.models import SmsConfig
+    return SmsConfig.query.filter_by(is_active=True).first()
 
 
 # ==================== 管理页面 HTML 路由（直接访问） ====================
@@ -1686,10 +1713,10 @@ def update_domain_page(domain_id):
             domain.set_ldap_password(admin_password)
             domain.set_admin_password(admin_password)
 
-        # 如果没有密码但数据库中有，则保留原密码
-        if not admin_password and domain.ldap_password:
+        # 如果没有密码但数据库中有（任一字段），则保留原密码
+        if not admin_password and (domain.ldap_password or domain.admin_password):
             pass  # 保持原密码不变
-        elif not admin_password and not domain.ldap_password:
+        elif not admin_password:
             # 都没有，报错
             return _alert_back('首次配置必须输入 LDAP 管理员密码！')
 
@@ -3096,6 +3123,7 @@ ps aux | grep gunicorn                    # 查看进程</code></pre>
                         <tr><td><code>PASSWORD_MIN_LENGTH</code> 等</td><td>8/全开</td><td>新密码策略：最小长度、是否要求大小写/数字/特殊字符</td></tr>
                         <tr><td><code>SMS_ASYNC_SEND</code></td><td>true</td><td>短信异步发送（抹平响应时序差；调试时可关）</td></tr>
                         <tr><td><code>LOG_LEVEL / LOG_FILE</code></td><td>INFO / logs/app.log</td><td>日志级别与路径；单文件 10MB 轮转保留 5 份</td></tr>
+                        <tr><td><code>LOG_RETENTION_DAYS</code></td><td>180</td><td>审计日志保留天数，超期自动清理（验证码&gt;24h、限流行&gt;30天固定清理）；<b>0 = 永久保留</b></td></tr>
                     </table>
                 </div>
 
