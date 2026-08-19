@@ -3,7 +3,9 @@
 运行：项目根目录执行  python -m pytest tests -v
 （conftest 自动把 backend 加入 sys.path；使用临时文件 SQLite + WAL，贴近生产行为）
 """
+import atexit
 import os
+import shutil
 import sys
 import tempfile
 
@@ -14,8 +16,11 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 os.environ.setdefault('SECRET_KEY', 'test-key-123')
-# 文件库（非 :memory:）：WAL 等生产特性才生效
-os.environ.setdefault('DATABASE_URL', 'sqlite:///' + os.path.join(tempfile.mkdtemp(prefix='ad2_test_'), 'test.db').replace('\\', '/'))
+# 文件库（非 :memory:）：WAL 等生产特性才生效；会话结束自动清理，不留测试垃圾
+_TEST_DB_DIR = tempfile.mkdtemp(prefix='ad2_test_')
+atexit.register(lambda: shutil.rmtree(_TEST_DB_DIR, ignore_errors=True))
+os.environ.setdefault('DATABASE_URL',
+                      'sqlite:///' + os.path.join(_TEST_DB_DIR, 'test.db').replace('\\', '/'))
 os.environ.setdefault('DEMO_MODE', 'true')
 
 from cryptography.fernet import Fernet

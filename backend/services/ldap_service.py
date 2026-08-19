@@ -117,7 +117,7 @@ class LdapService:
         # 检查密码是否为 bcrypt 加密格式
         pwd = domain_config.get('admin_password', '')
         if pwd.startswith('$2b$') and len(pwd) == 60:
-            return False, "❌ 检测到密码是 bcrypt 加密格式！LDAP 连接需要明文密码。\n\n请填写 LDAP 管理员的明文密码（例如：LX2320**）"
+            return False, "❌ 检测到密码是 bcrypt 加密格式！LDAP 连接需要明文密码。\n\n请填写 LDAP 管理员的明文密码"
         
         # 检查 DN 格式（只检查基本格式，不强制要求 CN=Users）
         admin_dn = domain_config.get('admin_dn', '')
