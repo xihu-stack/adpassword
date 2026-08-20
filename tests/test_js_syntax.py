@@ -23,6 +23,7 @@ PAGES = [
     ('logs', '/admin/logs'),
     ('protected', '/admin/protected'),
     ('security', '/admin/security'),
+    ('vault', '/admin/vault'),
     ('change_password', '/admin/change-password'),
     ('manual', '/admin/manual'),
     ('login', '/login'),

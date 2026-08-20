@@ -8,7 +8,8 @@ def _esc(s):
 
 ALL_PAGES = [
     '/admin/dashboard', '/admin/domains', '/admin/sms', '/admin/logs',
-    '/admin/protected', '/admin/security', '/admin/change-password', '/admin/manual',
+    '/admin/protected', '/admin/security', '/admin/vault',
+    '/admin/change-password', '/admin/manual',
 ]
 
 
@@ -162,3 +163,30 @@ def test_favicon_linked_and_served(admin_client, anon_client):
     for f in ('favicon.svg', 'favicon.png', 'apple-touch-icon.png'):
         r = anon_client.get('/static/' + f)
         assert r.status_code == 200 and len(r.data) > 100, f
+
+
+def test_credential_vault_encrypted_at_rest(admin_client, app):
+    """密码备忘：API 读写回环 + 落库内容必须密文 + 审计不含明文"""
+    secret = 'WAF#TopSecret$99'
+    notes = [{'t': 'WAF 管理台', 'u': 'admin', 'p': secret, 'n': 'https://waf.example'}]
+    r = admin_client.put('/admin/api/credential-notes', json={'notes': notes})
+    assert r.status_code == 200 and r.get_json()['success']
+
+    # 读回一致
+    d = admin_client.get('/admin/api/credential-notes').get_json()
+    assert d['success'] and d['data'][0]['p'] == secret
+
+    # 库里是密文（不含明文、是 Fernet token）
+    with app.app_context():
+        from models.models import SystemSetting, AdminLog
+        st = SystemSetting.query.filter_by(setting_key='credential_notes').first()
+        assert st.setting_value.startswith('gAAAA')
+        assert secret not in st.setting_value
+        # 审计只记条数
+        log = AdminLog.query.filter_by(action='credential_notes_update').order_by(
+            AdminLog.id.desc()).first()
+        assert log and secret not in (log.details or '')
+
+    # 手册与菜单已接线
+    assert '/admin/vault' in admin_client.get('/admin/dashboard').get_data(as_text=True)
+    assert 'c4-7' in admin_client.get('/admin/manual').get_data(as_text=True)

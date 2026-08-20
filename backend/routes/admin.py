@@ -205,6 +205,10 @@ def dashboard():
                     <div class="menu-icon">🔐</div>
                     <div class="menu-title">访问控制</div>
                 </a>
+                <a href="/admin/vault" class="menu-item">
+                    <div class="menu-icon">📒</div>
+                    <div class="menu-title">密码备忘</div>
+                </a>
                 <a href="/admin/change-password" class="menu-item">
                     <div class="menu-icon">🔑</div>
                     <div class="menu-title">修改密码</div>
@@ -1062,6 +1066,7 @@ def logs_page():
                         <option value="admin_password_change">管理员改密</option>
                         <option value="protected_list_update">保护名单更新</option>
                         <option value="security_whitelist_update">访问白名单更新</option>
+                        <option value="credential_notes_update">密码备忘更新</option>
                         <option value="domain_create">域创建</option>
                         <option value="domain_update">域更新</option>
                         <option value="domain_delete">域删除</option>
@@ -1208,7 +1213,8 @@ def logs_page():
                     'domain_delete': 'badge-danger',
                     'sms_config': 'badge-system',
                     'protected_list_update': 'badge-system',
-                    'security_whitelist_update': 'badge-system'
+                    'security_whitelist_update': 'badge-system',
+                    'credential_notes_update': 'badge-system'
                 };
                 return classes[action] || 'badge-system';
             }
@@ -1234,7 +1240,8 @@ def logs_page():
                     'domain_delete': '域删除',
                     'sms_config': '短信配置',
                     'protected_list_update': '保护名单更新',
-                    'security_whitelist_update': '访问白名单更新'
+                    'security_whitelist_update': '访问白名单更新',
+                    'credential_notes_update': '密码备忘更新'
                 };
                 return names[action] || action;
             }
@@ -2864,6 +2871,215 @@ def update_admin_allowed_ips():
     return jsonify({'success': True, 'data': valid})
 
 
+def _get_credential_notes():
+    """读取密码备忘（Fernet 解密）。返回 list[{t,u,p,n}]，损坏/未配置返回 []。"""
+    import json
+    from models.models import SystemSetting
+    from services import secret_crypto
+    st = SystemSetting.query.filter_by(setting_key='credential_notes').first()
+    if not st or not st.setting_value:
+        return []
+    try:
+        plain = secret_crypto.decrypt_value(st.setting_value)
+        data = json.loads(plain) if plain else []
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+@admin_bp.route('/vault')
+@admin_required
+def vault_page():
+    """密码备忘页面：加密存储外部系统凭据（WAF/服务器/云控制台等）"""
+    username = session.get('username', '管理员')
+    html = '''
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>密码备忘 - 华深智药</title>
+        <style>
+            * { margin:0; padding:0; box-sizing:border-box; }
+            body { font-family:'Microsoft YaHei',Arial,sans-serif; background:#f5f7fa; }
+            .header { background:linear-gradient(135deg,#15376b 0%,#1f5fa8 100%); color:#fff; padding:20px 40px; display:flex; justify-content:space-between; align-items:center; }
+            .header h1 { font-size:22px; }
+            .logout-btn { background:rgba(255,255,255,.2); color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; text-decoration:none; }
+            .container { max-width:900px; margin:0 auto; padding:30px; }
+            .back-btn { display:inline-block; margin-bottom:20px; padding:8px 20px; background:#fff; color:#15376b; text-decoration:none; border-radius:4px; }
+            .card { background:#fff; border-radius:10px; padding:30px; box-shadow:0 2px 10px rgba(0,0,0,.05); margin-bottom:20px; }
+            .card h2 { color:#333; margin-bottom:8px; }
+            .desc { color:#666; font-size:13px; line-height:1.8; margin-bottom:16px; }
+            table { width:100%; border-collapse:collapse; font-size:13px; }
+            th { background:#f0f6ff; color:#15376b; font-weight:600; }
+            th, td { padding:10px 12px; border:1px solid #e6eef9; text-align:left; word-break:break-all; }
+            .empty { color:#999; text-align:center; padding:24px; }
+            .pwd-cell { font-family:Consolas,monospace; }
+            .btn { padding:5px 12px; border:none; border-radius:4px; cursor:pointer; font-size:12px; color:#fff; }
+            .btn-show { background:#409EFF; } .btn-copy { background:#67C23A; } .btn-del { background:#F56C6C; }
+            .add-box { background:#f8faff; border:1px solid #e6eef9; border-radius:8px; padding:16px; margin-bottom:16px; }
+            .add-box .row { display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap; }
+            .add-box input { flex:1; min-width:140px; padding:9px 11px; border:1px solid #ddd; border-radius:6px; font-size:13px; }
+            .add { padding:9px 22px; border:none; background:linear-gradient(135deg,#15376b,#1f5fa8); color:#fff; border-radius:6px; cursor:pointer; font-size:13px; }
+            .save-bar { margin-top:16px; text-align:right; }
+            .save { padding:12px 28px; border:none; background:linear-gradient(135deg,#67C23A,#4CAF50); color:#fff; border-radius:6px; cursor:pointer; font-size:15px; font-weight:bold; }
+            .msg { font-size:13px; padding:11px 13px; border-radius:6px; margin-bottom:14px; display:none; word-break:break-all; }
+            .msg.ok { background:#f0f9eb; color:#67C23A; display:block; }
+            .msg.err { background:#fef0f0; color:#f56c6c; display:block; }
+            .tip { background:#fdf6ec; border-left:4px solid #E6A23C; padding:12px 16px; border-radius:0 6px 6px 0; font-size:12.5px; line-height:1.8; color:#8a6d3b; }
+        </style>
+    </head>
+    <body>
+<script>const CSRF_TOKEN="{{ csrf_token() }}";(function(){var f=window.fetch;window.fetch=function(u,o){o=o||{};o.headers=o.headers||{};if(!o.headers['X-CSRFToken']){o.headers['X-CSRFToken']=CSRF_TOKEN;}return f(u,o);};})();</script>
+        <div class="header">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="华深智药" style="height:30px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.25));">
+                <h1>📒 密码备忘</h1>
+            </div>
+            <div>
+                <span style="margin-right:15px;">{{ username }}</span>
+                <a href="/logout" class="logout-btn">退出登录</a>
+            </div>
+        </div>
+        <div class="container">
+            <a href="/admin/dashboard" class="back-btn">← 返回管理后台</a>
+            <div class="card">
+                <h2>外部系统凭据备忘</h2>
+                <p class="desc">记录本系统不代管的外部凭据：WAF 管理台、服务器 SSH、阿里云控制台、域控本地管理员等。数据用 Fernet 加密存库（与域控密码同套密钥），仅登录后台可见。本系统代管的凭据（域控对接密码、短信密钥）在各自配置页维护，无需记在这里。</p>
+                <div class="msg" id="msg"></div>
+                <div class="add-box">
+                    <div class="row">
+                        <input id="nt" placeholder="名称（如：WAF 管理台）">
+                        <input id="nu" placeholder="账号/用户名">
+                        <input id="np" type="text" placeholder="密码" autocomplete="off">
+                    </div>
+                    <div class="row">
+                        <input id="nn" placeholder="备注（地址/说明，可空）" style="flex:1;">
+                        <button class="add" onclick="addItem()">＋ 添加</button>
+                    </div>
+                </div>
+                <div id="listWrap">
+                    <table>
+                        <thead><tr><th style="width:22%">名称</th><th style="width:22%">账号</th><th style="width:28%">密码</th><th>备注</th><th style="width:130px">操作</th></tr></thead>
+                        <tbody id="listBody"></tbody>
+                    </table>
+                </div>
+                <div class="save-bar">
+                    <button class="save" onclick="save()">💾 保存（加密存储）</button>
+                </div>
+            </div>
+            <div class="tip">⚠️ 安全边界：① 加密密钥与服务器同存——本页只防"忘记"，不防服务器被攻破；最高敏感凭据仍建议放专业密码管理器（Bitwarden/1Password）。② 若更换 SECRET_ENCRYPTION_KEY，本页数据将无法解密，请先导出抄录。③ 每次保存会记审计日志（不含内容）。</div>
+        </div>
+        <script>
+            let items = [];
+            let shown = -1;
+            function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+            function show(m, cls){ const e=document.getElementById('msg'); e.textContent=m; e.className='msg '+(cls||''); }
+            function render(){
+                const tb = document.getElementById('listBody');
+                if(!items.length){ tb.innerHTML='<tr><td colspan="5" class="empty">暂无备忘（在上方添加第一条）</td></tr>'; return; }
+                tb.innerHTML = items.map(function(it, i){
+                    var pwd = shown === i ? '<span class="pwd-cell">'+esc(it.p)+'</span>' : '<span class="pwd-cell">••••••••</span>';
+                    var btn = shown === i ? '隐藏' : '显示';
+                    return '<tr><td>'+esc(it.t)+'</td><td>'+esc(it.u)+'</td><td>'+pwd+'</td><td>'+esc(it.n)+'</td>'
+                        + '<td><button class="btn btn-show" onclick="toggle('+i+')">'+btn+'</button> '
+                        + '<button class="btn btn-copy" onclick="copyPwd('+i+')">复制</button> '
+                        + '<button class="btn btn-del" onclick="delItem('+i+')">删除</button></td></tr>';
+                }).join('');
+            }
+            function toggle(i){ shown = shown === i ? -1 : i; render(); }
+            function copyPwd(i){
+                var p = items[i].p;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(p).then(function(){ show('已复制 '+items[i].t+' 的密码','ok'); }, function(){ show('复制失败，请点显示后手动复制','err'); });
+                } else {
+                    var ta = document.createElement('textarea');
+                    ta.value = p; document.body.appendChild(ta); ta.select();
+                    try { document.execCommand('copy'); show('已复制 '+items[i].t+' 的密码','ok'); } catch(e){ show('复制失败，请点显示后手动复制','err'); }
+                    document.body.removeChild(ta);
+                }
+            }
+            function addItem(){
+                var t = document.getElementById('nt').value.trim();
+                var u = document.getElementById('nu').value.trim();
+                var p = document.getElementById('np').value;
+                var n = document.getElementById('nn').value.trim();
+                if(!t || !p){ show('名称和密码必填','err'); return; }
+                items.push({t:t, u:u, p:p, n:n});
+                document.getElementById('nt').value=''; document.getElementById('nu').value='';
+                document.getElementById('np').value=''; document.getElementById('nn').value='';
+                render(); show('已添加（需点保存生效）','ok');
+            }
+            function delItem(i){ items.splice(i,1); if(shown===i) shown=-1; render(); show('已移除（需点保存生效）','ok'); }
+            async function load(){
+                try{
+                    const d = await (await fetch('/admin/api/credential-notes')).json();
+                    if(!d.success){ show('加载失败：'+(d.message||''),'err'); return; }
+                    items = d.data || []; render();
+                }catch(e){ show('加载失败：'+e,'err'); }
+            }
+            async function save(){
+                if(!confirm('确认保存？共 '+items.length+' 条（覆盖现有备忘）')) return;
+                try{
+                    const r = await fetch('/admin/api/credential-notes', {
+                        method:'PUT', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({notes: items})
+                    });
+                    const d = await r.json();
+                    if(d.success){ show('已保存（共 '+d.data.length+' 条，加密存储）','ok'); }
+                    else { show(d.message||'保存失败','err'); }
+                }catch(e){ show('保存失败：'+e,'err'); }
+            }
+            load();
+        </script>
+    </body>
+    </html>
+    '''
+    return render_template_string(html, username=username)
+
+
+@admin_bp.route('/api/credential-notes', methods=['GET'])
+@admin_required
+def get_credential_notes():
+    return jsonify({'success': True, 'data': _get_credential_notes()})
+
+
+@admin_bp.route('/api/credential-notes', methods=['PUT'])
+@admin_required
+def update_credential_notes():
+    """保存密码备忘（整体覆盖）。Fernet 加密存库；审计只记条数不含内容。"""
+    import json
+    from models.models import SystemSetting, db
+    from services import secret_crypto
+    from utils.logger import log_operation
+
+    data = request.get_json(silent=True) or {}
+    raw = data.get('notes', [])
+    if not isinstance(raw, list) or len(raw) > 200:
+        return jsonify({'success': False, 'message': '参数错误（最多 200 条）'}), 400
+    cleaned = []
+    for it in raw:
+        if not isinstance(it, dict):
+            continue
+        t = str(it.get('t', ''))[:100].strip()
+        u = str(it.get('u', ''))[:100].strip()
+        p = str(it.get('p', ''))[:255]
+        n = str(it.get('n', ''))[:500].strip()
+        if t and p:
+            cleaned.append({'t': t, 'u': u, 'p': p, 'n': n})
+
+    st = SystemSetting.query.filter_by(setting_key='credential_notes').first()
+    if not st:
+        st = SystemSetting(setting_key='credential_notes', setting_type='string',
+                           description='密码备忘（Fernet 加密）')
+        db.session.add(st)
+    st.setting_value = secret_crypto.encrypt_value(json.dumps(cleaned, ensure_ascii=False))
+    db.session.commit()
+
+    log_operation('credential_notes_update', details='更新密码备忘：%d 条（内容不记录）' % len(cleaned))
+    return jsonify({'success': True, 'data': cleaned})
+
+
 @admin_bp.route('/manual')
 @admin_required
 def manual_page():
@@ -2960,6 +3176,7 @@ def manual_page():
                     <a href="#c4-4">4.4 保护名单</a>
                     <a href="#c4-5">4.5 修改管理员密码</a>
                     <a href="#c4-6">4.6 访问控制（IP 白名单）</a>
+                    <a href="#c4-7">4.7 密码备忘与凭据找回</a>
                 </div>
                 <a href="#c5">5. 用户自助重置流程</a>
                 <a href="#c6">6. 配置项说明（.env）</a>
@@ -3108,6 +3325,18 @@ ps aux | grep gunicorn                    # 查看进程</code></pre>
                         <li>防自锁：保存时新名单必须包含<b>当前登录的 IP</b>，否则拒绝保存；</li>
                         <li>每次变更记入操作日志（"访问白名单更新"），可在日志页筛选审计。</li>
                     </ul>
+
+                    <h3 id="c4-7">4.7 📒 密码备忘与凭据找回（/admin/vault）</h3>
+                    <p>「📒 密码备忘」页用于记录<b>本系统不代管的外部凭据</b>（WAF 管理台、服务器 SSH、阿里云控制台、域控本地管理员等）：Fernet 加密存库、仅登录后台可见、密码默认打码可一键显示/复制。</p>
+                    <table>
+                        <tr><th>凭据</th><th>存在哪</th><th>忘了怎么办</th></tr>
+                        <tr><td>后台 admin 登录密码</td><td>数据库（bcrypt 哈希，任何人不可见）</td><td>服务器执行 <code>cd backend && python init_admin_password.py</code> 重置为 admin，登录后立即改强口令</td></tr>
+                        <tr><td>域控对接密码（域配置里的）</td><td>数据库（Fernet 加密），系统自动使用</td><td>无需记住——在【域配置】页直接重填新密码保存即可；忘了原密码不影响</td></tr>
+                        <tr><td>阿里云短信 AccessKey/Secret</td><td>数据库（Fernet 加密），系统自动使用</td><td>无需记住——阿里云控制台可查 Key ID；Secret 泄露/遗忘就新建一对，在【短信配置】页更新</td></tr>
+                        <tr><td>SECRET_KEY / SECRET_ENCRYPTION_KEY</td><td>服务器 <code>backend/.env</code></td><td>SECRET_KEY 重设会使所有会话失效（无数据损失）；SECRET_ENCRYPTION_KEY 丢失则已存加密凭据全部失效，需重新录入域控/短信/备忘</td></tr>
+                        <tr><td>WAF / 服务器 / 云控制台等外部凭据</td><td>【📒 密码备忘】页（加密）</td><td>登录后台 → 密码备忘 → 显示/复制</td></tr>
+                    </table>
+                    <div class="warn">⚠️ 密码备忘的加密密钥与服务器同存，只防"忘记"不防服务器被攻破；最高敏感凭据建议用专业密码管理器。更换 SECRET_ENCRYPTION_KEY 前请先抄录备忘内容。</div>
                 </div>
 
                 <!-- ================= 5 用户流程 ================= -->
