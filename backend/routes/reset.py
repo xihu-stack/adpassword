@@ -116,7 +116,8 @@ def verify_code():
         return _fail('会话已过期，请重新开始', 1), 400
     data = request.get_json(silent=True) or {}
     code = data.get('code')
-    if not code:
+    # 类型兜底：非字符串（如 JSON 传数字）直接 400，不进入 bcrypt 比对也不消耗验证码
+    if not isinstance(code, str) or not code:
         return _fail('请输入验证码', 3), 400
     svc = ResetService()
     ok, msg = svc.verify_sms_code(session.get('reset_phone'), code)
@@ -135,15 +136,20 @@ def do_reset():
     data = request.get_json(silent=True) or {}
     new_password = data.get('new_password')
     confirm = data.get('confirm_password')
+    # 类型/长度兜底：缺失或非字符串（如 JSON 传数字）直接 400，
+    # 而非后续 None.lower() / len(int) 抛 500（诊断日志也只在校验后记录）
+    if not isinstance(new_password, str) or not new_password or not isinstance(confirm, str):
+        return _fail('请输入新密码', 4), 400
+    if len(new_password) > 128:
+        return _fail('新密码过长（最多 128 位）', 4), 400
+    if new_password != confirm:
+        return _fail('两次输入的新密码不一致', 4), 400
     # 诊断：记录密码长度和来源（不记录密码本身），排查 WAF 篡改
     current_app.logger.info('do-reset: user=%s pw_len=%d confirm_len=%d match=%s ip=%s',
                             session.get('reset_email'),
-                            len(new_password) if new_password else -1,
-                            len(confirm) if confirm else -1,
+                            len(new_password), len(confirm),
                             new_password == confirm,
                             request.remote_addr)
-    if new_password != confirm:
-        return _fail('两次输入的新密码不一致', 4), 400
 
     svc = ResetService()
     # 额外检查：密码不能包含用户名/邮箱前缀（AD 域策略会拒绝）

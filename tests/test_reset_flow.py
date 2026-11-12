@@ -34,13 +34,53 @@ def test_oversized_input_rejected(anon_client):
 
 def test_password_containing_username_rejected(anon_client):
     c = anon_client
-    d = c.post('/reset/verify-identity', json={'email': 'huxi@helixon.com', 'phone': '13800000000'}).get_json()
+    d = c.post('/reset/verify-identity', json={'email': 'demo@demo.com', 'phone': '13800000000'}).get_json()
     assert d['success'] and d.get('demo_code')
     assert c.post('/reset/verify-code', json={'code': d['demo_code']}).get_json()['success']
-    r = c.post('/reset/do-reset', json={'new_password': 'Huxi@12345!',
-                                        'confirm_password': 'Huxi@12345!'})
+    r = c.post('/reset/do-reset', json={'new_password': 'Demo@12345!',
+                                        'confirm_password': 'Demo@12345!'})
     d = r.get_json()
     assert not d['success'] and '用户名' in d['message'], d
+
+
+def _authorized_client(c):
+    """走完身份+验证码，返回已授权的客户端（DEMO）"""
+    d = c.post('/reset/verify-identity', json={'email': 'demo@demo.com', 'phone': '13800000000'}).get_json()
+    assert d['success'] and d.get('demo_code'), d
+    assert c.post('/reset/verify-code', json={'code': d['demo_code']}).get_json()['success']
+    return c
+
+
+def test_do_reset_missing_fields_is_400_not_500(anon_client):
+    """缺 new_password/confirm_password 应 400 友好提示，而非 None.lower() 抛 500"""
+    c = _authorized_client(anon_client)
+    r = c.post('/reset/do-reset', json={})
+    assert r.status_code == 400, r.status_code
+    assert not r.get_json()['success']
+
+
+def test_do_reset_non_string_password_is_400_not_500(anon_client):
+    """JSON 传数字密码（int == int 通过相等检查）同样应 400 而非 500"""
+    c = _authorized_client(anon_client)
+    r = c.post('/reset/do-reset', json={'new_password': 12345678, 'confirm_password': 12345678})
+    assert r.status_code == 400, r.status_code
+
+
+def test_do_reset_oversized_password_rejected(anon_client):
+    """超长密码应提前拒绝（AD 上限 256，超长只会拿到含糊的域策略报错）"""
+    c = _authorized_client(anon_client)
+    pw = 'Aa1!' + 'x' * 200
+    r = c.post('/reset/do-reset', json={'new_password': pw, 'confirm_password': pw})
+    assert r.status_code == 400, r.status_code
+
+
+def test_verify_code_non_string_is_400_not_500(anon_client):
+    """验证码传数字应 400，且不消耗已发验证码（随后正确验证码仍通过）"""
+    c = anon_client
+    d = c.post('/reset/verify-identity', json={'email': 'demo@demo.com', 'phone': '13800000000'}).get_json()
+    r = c.post('/reset/verify-code', json={'code': 123456})
+    assert r.status_code == 400, r.status_code
+    assert c.post('/reset/verify-code', json={'code': d['demo_code']}).get_json()['success']
 
 
 def test_cleanup_expired_safe(app):
