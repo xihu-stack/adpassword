@@ -49,6 +49,13 @@ def pick_phone(mobile, telephone):
     return str(telephone or '').strip()
 
 
+def pick_email(mail, upn):
+    """取用户邮箱：mail（电子邮件属性）优先，为空回退 userPrincipalName（登录名）。
+    两者通常同值，但部分账号创建时漏填 mail，只按 mail 搜索会"未找到用户"。"""
+    m = str(mail or '').strip()
+    return m if m else str(upn or '').strip()
+
+
 def secret_decrypt(v):
     """解密存储的凭据；未加密（旧数据）原样返回。
     解密失败（密钥变更/丢失）抛 RuntimeError——绝不能用空密码继续匿名绑定。"""
@@ -533,8 +540,10 @@ class LdapService:
         if not servers:
             return None
 
-        filt = f'(&(objectClass=user)(objectCategory=person)(mail={escape_ldap(email)}))'
-        attrs = ['distinguishedName', 'mail', 'mobile', 'telephoneNumber',
+        # 按 mail 查找；mail 属性为空的账号回退匹配 userPrincipalName（登录名，通常同值）
+        filt = (f'(&(objectClass=user)(objectCategory=person)'
+                f'(|(mail={escape_ldap(email)})(userPrincipalName={escape_ldap(email)})))')
+        attrs = ['distinguishedName', 'mail', 'userPrincipalName', 'mobile', 'telephoneNumber',
                  'sAMAccountName', 'memberOf', 'userAccountControl']
         for protocol, host, port in servers:
             server_url = f"{protocol}://{host}:{port}"
@@ -571,7 +580,8 @@ class LdapService:
                     member_of = []
                 return {
                     'user_dn': entry.entry_dn,
-                    'mail': str(entry.mail.value) if entry.mail.value else '',
+                    # mail 为空时回退 userPrincipalName（部分账号创建时漏填 mail 属性）
+                    'mail': pick_email(entry.mail.value, entry.userPrincipalName.value),
                     # mobile 为空时回退 telephoneNumber（大量用户号码填在办公室电话字段）
                     'mobile': pick_phone(entry.mobile.value, entry.telephoneNumber.value),
                     'sam_account_name': str(entry.sAMAccountName.value) if entry.sAMAccountName.value else '',
