@@ -39,6 +39,16 @@ def build_tls_context():
                ciphers='ALL:@SECLEVEL=0')  # 兼容旧域控
 
 
+def pick_phone(mobile, telephone):
+    """取用户手机号：mobile（移动电话）优先，为空回退 telephoneNumber（办公室电话）。
+    AD 录入常见把手机号填进"办公室电话"字段，只认 mobile 会误报"手机号与域控不匹配"。
+    返回去首尾空白的原始字符串（格式归一化由 normalize_phone 做）。"""
+    m = str(mobile or '').strip()
+    if m:
+        return m
+    return str(telephone or '').strip()
+
+
 def secret_decrypt(v):
     """解密存储的凭据；未加密（旧数据）原样返回。
     解密失败（密钥变更/丢失）抛 RuntimeError——绝不能用空密码继续匿名绑定。"""
@@ -524,7 +534,8 @@ class LdapService:
             return None
 
         filt = f'(&(objectClass=user)(objectCategory=person)(mail={escape_ldap(email)}))'
-        attrs = ['distinguishedName', 'mail', 'mobile', 'sAMAccountName', 'memberOf', 'userAccountControl']
+        attrs = ['distinguishedName', 'mail', 'mobile', 'telephoneNumber',
+                 'sAMAccountName', 'memberOf', 'userAccountControl']
         for protocol, host, port in servers:
             server_url = f"{protocol}://{host}:{port}"
             server = Server(server_url, get_info=ALL, tls=build_tls_context(), connect_timeout=10)
@@ -561,7 +572,8 @@ class LdapService:
                 return {
                     'user_dn': entry.entry_dn,
                     'mail': str(entry.mail.value) if entry.mail.value else '',
-                    'mobile': str(entry.mobile.value) if entry.mobile.value else '',
+                    # mobile 为空时回退 telephoneNumber（大量用户号码填在办公室电话字段）
+                    'mobile': pick_phone(entry.mobile.value, entry.telephoneNumber.value),
                     'sam_account_name': str(entry.sAMAccountName.value) if entry.sAMAccountName.value else '',
                     'member_of': member_of,
                     'disabled': bool(uac & 0x2),  # ACCOUNTDISABLE (value 2)
